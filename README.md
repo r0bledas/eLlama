@@ -1,4 +1,4 @@
-﻿# eLlama
+# eLlama
 
 **eLlama** is a fast, native Windows desktop manager and launcher for local GGUF large language models, powered directly by [`llama.cpp`](https://github.com/ggml-org/llama.cpp).
 
@@ -9,10 +9,34 @@ Unlike traditional local runners that duplicate model weights into internal blob
 ## Key Features
 
 - **Zero-Copy In-Place Execution**: Streams `.gguf` models directly from your folder without duplicating disk space.
+- **100% Portable Distribution**: Can run entirely standalone from any folder, external SSD, or USB flash drive without installation.
+- **Cross-GPU Vulkan Acceleration**: Out-of-the-box hardware acceleration across Nvidia, AMD Radeon, and Intel GPUs without needing CUDA drivers or toolkits.
+- **Built-in llama.cpp Updater**: Download or update to the latest official `llama.cpp` Vulkan release directly from the Settings interface with one click.
+- **Model Catalog Exporter**: Export your entire local model catalog and metadata to CSV, JSON, Markdown, or Plain Text.
 - **Fast Instant Search**: Real-time filtering across model names, publishers, quantization types, and filenames.
 - **Vision Projector Auto-Filter**: Automatically recognizes and isolates vision projector files (`mmproj`) so your model list remains clean.
 - **Interactive Terminal Chat**: Launch models into full interactive multi-turn conversations with a single double-click or by hitting Enter.
 - **Numerical Sorting**: One-click sorting by file size (calculated numerically by bytes), model name, quant, or publisher.
+
+---
+
+## Portable Distribution Layout
+
+eLlama supports a completely self-contained, portable folder structure:
+
+```text
+eLlama-Portable/
+├── eLlama.exe               # Self-contained launcher (no .NET runtime install required)
+├── settings.json            # Portable local settings (stored alongside eLlama.exe)
+├── models/                  # Your .gguf model library
+│   └── Llama-3-8B-Instruct.gguf
+└── llama.cpp/               # llama.cpp binaries with Vulkan hardware acceleration
+    ├── llama-cli.exe
+    ├── ggml-vulkan.dll
+    └── ... (supporting libraries)
+```
+
+When placed in this structure, eLlama automatically resolves all paths relatively (`models` and `llama.cpp\llama-cli.exe`), meaning you can move the folder anywhere or run it from a USB drive on any Windows PC.
 
 ---
 
@@ -44,8 +68,8 @@ eLlama includes full fine-grained control over inference, memory, and sampling:
 ## Requirements
 
 - **Operating System**: Windows 10 or Windows 11 (x64)
-- **Runtime**: [.NET 10.0](https://dotnet.microsoft.com/download) Windows Desktop Runtime
-- **Backend**: [`llama.cpp`](https://github.com/ggml-org/llama.cpp/releases) (`llama-cli.exe`)
+- **Runtime**: None for Portable standalone build (.NET 10.0 runtime is bundled); or [.NET 10.0](https://dotnet.microsoft.com/download) Windows Desktop Runtime for framework-dependent builds.
+- **Backend**: [`llama.cpp`](https://github.com/ggml-org/llama.cpp/releases) (`llama-cli.exe`) with Vulkan or CPU backend.
 
 ---
 
@@ -57,10 +81,14 @@ cd eLlama
 dotnet build -c Release
 ```
 
-The output executable will be created at `bin\Release\net10.0-windows\eLlama.exe`.
+To build a self-contained portable executable:
+```bash
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o ./PortableRelease
+```
 
 ---
 
 ## License
 
 MIT License.
+

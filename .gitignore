@@ -1,4 +1,4 @@
-﻿# Build outputs
+# Build outputs
 bin/
 obj/
 [Bb]in/
@@ -27,3 +27,5 @@ desktop.ini
 
 Release/
 [Rr]elease/
+PortableRelease/
+[Pp]ortableRelease/

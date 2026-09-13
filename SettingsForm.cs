@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 
@@ -11,6 +12,7 @@ public class SettingsForm : Form
     private TextBox txtLlamaCli = null!;
     private CheckBox chkHideProjectors = null!;
     private ComboBox cmbExportFormat = null!;
+    private Button btnDownloadLlama = null!;
 
     // Hardware & Compute
     private NumericUpDown numThreads = null!;
@@ -137,13 +139,14 @@ public class SettingsForm : Form
         };
         btnBrowse.Click += (s, e) =>
         {
+            string current = AppSettings.ResolvePath(txtDirectory.Text);
             using var fbd = new FolderBrowserDialog
             {
-                SelectedPath = Directory.Exists(txtDirectory.Text) ? txtDirectory.Text : @"C:\"
+                SelectedPath = Directory.Exists(current) ? current : AppSettings.AppDir
             };
             if (fbd.ShowDialog(this) == DialogResult.OK)
             {
-                txtDirectory.Text = fbd.SelectedPath;
+                txtDirectory.Text = AppSettings.ToRelativePath(fbd.SelectedPath);
             }
         };
 
@@ -153,8 +156,8 @@ public class SettingsForm : Form
         var grpBackend = new GroupBox
         {
             Text = "llama.cpp Backend",
-            Location = new Point(12, 102),
-            Size = new Size(590, 80)
+            Location = new Point(12, 98),
+            Size = new Size(590, 115)
         };
 
         var lblLlama = new Label
@@ -178,34 +181,52 @@ public class SettingsForm : Form
         };
         btnBrowseLlama.Click += (s, e) =>
         {
+            string current = AppSettings.ResolvePath(txtLlamaCli.Text);
+            string initDir = File.Exists(current) ? Path.GetDirectoryName(current)! : Path.Combine(AppSettings.AppDir, "llama.cpp");
+            if (!Directory.Exists(initDir)) initDir = AppSettings.AppDir;
+
             using var ofd = new OpenFileDialog
             {
                 Title = "Select llama-cli.exe",
                 Filter = "llama-cli.exe|llama-cli*.exe|All Executables (*.exe)|*.exe",
-                InitialDirectory = Directory.Exists(@"C:\Users\T450\Utilities\llama.cpp")
-                    ? @"C:\Users\T450\Utilities\llama.cpp"
-                    : @"C:\"
+                InitialDirectory = initDir
             };
             if (ofd.ShowDialog(this) == DialogResult.OK)
             {
-                txtLlamaCli.Text = ofd.FileName;
+                txtLlamaCli.Text = AppSettings.ToRelativePath(ofd.FileName);
             }
         };
 
-        grpBackend.Controls.AddRange(new Control[] { lblLlama, txtLlamaCli, btnBrowseLlama });
+        btnDownloadLlama = new Button
+        {
+            Text = "Download Latest llama.cpp (Vulkan)",
+            Location = new Point(14, 74),
+            Size = new Size(245, 28)
+        };
+        btnDownloadLlama.Click += (s, e) => DownloadLlamaCppAsync();
+
+        var lblDownloadHint = new Label
+        {
+            Text = "Auto-installs hardware-accelerated Vulkan binaries into .\\llama.cpp\\",
+            Location = new Point(266, 80),
+            AutoSize = true,
+            ForeColor = SystemColors.GrayText
+        };
+
+        grpBackend.Controls.AddRange(new Control[] { lblLlama, txtLlamaCli, btnBrowseLlama, btnDownloadLlama, lblDownloadHint });
 
         // Display Preferences
         var grpFilter = new GroupBox
         {
             Text = "Display & Filtering",
-            Location = new Point(12, 192),
-            Size = new Size(590, 70)
+            Location = new Point(12, 222),
+            Size = new Size(590, 65)
         };
 
         chkHideProjectors = new CheckBox
         {
             Text = "Hide Vision Projectors (mmproj files) by default",
-            Location = new Point(14, 28),
+            Location = new Point(14, 26),
             AutoSize = true
         };
 
@@ -215,7 +236,7 @@ public class SettingsForm : Form
         var grpExport = new GroupBox
         {
             Text = "Export Model Library",
-            Location = new Point(12, 272),
+            Location = new Point(12, 295),
             Size = new Size(590, 85)
         };
 
@@ -633,15 +654,15 @@ public class SettingsForm : Form
         var s = AppSettings.Instance;
 
         string newDir = txtDirectory.Text.Trim();
-        if (!string.IsNullOrEmpty(newDir) && Directory.Exists(newDir))
+        if (!string.IsNullOrEmpty(newDir))
         {
-            s.ModelsDirectory = newDir;
+            s.ModelsDirectory = AppSettings.ToRelativePath(newDir);
         }
 
         string newLlamaCli = txtLlamaCli.Text.Trim();
         if (!string.IsNullOrEmpty(newLlamaCli))
         {
-            s.LlamaCliPath = newLlamaCli;
+            s.LlamaCliPath = AppSettings.ToRelativePath(newLlamaCli);
         }
 
         s.HideProjectors = chkHideProjectors.Checked;
@@ -692,6 +713,164 @@ public class SettingsForm : Form
         s.Save();
         onSettingsSaved?.Invoke();
         Close();
+    }
+
+    private async void DownloadLlamaCppAsync()
+    {
+        btnDownloadLlama.Enabled = false;
+        string originalText = btnDownloadLlama.Text;
+        btnDownloadLlama.Text = "Checking releases...";
+
+        try
+        {
+            using var http = new HttpClient();
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("eLlama-Updater");
+
+            // 1. Query GitHub releases
+            string apiUrl = "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=5";
+            string json = await http.GetStringAsync(apiUrl);
+
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array || doc.RootElement.GetArrayLength() == 0)
+            {
+                throw new Exception("No releases found on ggml-org/llama.cpp.");
+            }
+
+            var latestRelease = doc.RootElement[0];
+            string tagName = latestRelease.GetProperty("tag_name").GetString() ?? "latest";
+
+            // 2. Find Vulkan asset (fallback CPU)
+            string? downloadUrl = null;
+            string? assetName = null;
+
+            if (latestRelease.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var asset in assets.EnumerateArray())
+                {
+                    string name = asset.GetProperty("name").GetString() ?? "";
+                    if (name.Contains("win", StringComparison.OrdinalIgnoreCase) &&
+                        name.Contains("vulkan", StringComparison.OrdinalIgnoreCase) &&
+                        name.Contains("x64", StringComparison.OrdinalIgnoreCase) &&
+                        name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                    {
+                        downloadUrl = asset.GetProperty("browser_download_url").GetString();
+                        assetName = name;
+                        break;
+                    }
+                }
+
+                // Fallback to CPU if Vulkan not found
+                if (downloadUrl == null)
+                {
+                    foreach (var asset in assets.EnumerateArray())
+                    {
+                        string name = asset.GetProperty("name").GetString() ?? "";
+                        if (name.Contains("win", StringComparison.OrdinalIgnoreCase) &&
+                            name.Contains("cpu", StringComparison.OrdinalIgnoreCase) &&
+                            name.Contains("x64", StringComparison.OrdinalIgnoreCase) &&
+                            name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                        {
+                            downloadUrl = asset.GetProperty("browser_download_url").GetString();
+                            assetName = name;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (string.IsNullOrEmpty(downloadUrl))
+            {
+                throw new Exception($"Could not find a Windows x64 release asset in llama.cpp {tagName}.");
+            }
+
+            var confirm = MessageBox.Show(
+                $"Found latest release: {tagName}\nAsset: {assetName}\n\nWould you like to download and install this into '.\\llama.cpp\\'?",
+                "Download llama.cpp",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question
+            );
+
+            if (confirm != DialogResult.Yes)
+            {
+                btnDownloadLlama.Text = originalText;
+                btnDownloadLlama.Enabled = true;
+                return;
+            }
+
+            // 3. Download
+            btnDownloadLlama.Text = "Downloading...";
+            string tempZip = Path.Combine(Path.GetTempPath(), $"llama_{Guid.NewGuid():N}.zip");
+
+            using (var response = await http.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead))
+            {
+                response.EnsureSuccessStatusCode();
+                long? totalBytes = response.Content.Headers.ContentLength;
+
+                using var stream = await response.Content.ReadAsStreamAsync();
+                using var fileStream = new FileStream(tempZip, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
+
+                var buffer = new byte[81920];
+                long totalRead = 0;
+                int read;
+                DateTime lastUpdate = DateTime.Now;
+
+                while ((read = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                {
+                    await fileStream.WriteAsync(buffer, 0, read);
+                    totalRead += read;
+
+                    if ((DateTime.Now - lastUpdate).TotalMilliseconds > 250)
+                    {
+                        lastUpdate = DateTime.Now;
+                        if (totalBytes.HasValue && totalBytes.Value > 0)
+                        {
+                            int pct = (int)((totalRead * 100) / totalBytes.Value);
+                            btnDownloadLlama.Text = $"Downloading {pct}%...";
+                        }
+                        else
+                        {
+                            btnDownloadLlama.Text = $"Downloading ({totalRead / (1024 * 1024)} MB)...";
+                        }
+                    }
+                }
+            }
+
+            // 4. Extract
+            btnDownloadLlama.Text = "Extracting...";
+            string targetDir = Path.Combine(AppSettings.AppDir, "llama.cpp");
+            Directory.CreateDirectory(targetDir);
+
+            ZipFile.ExtractToDirectory(tempZip, targetDir, overwriteFiles: true);
+
+            try { File.Delete(tempZip); } catch { }
+
+            // 5. Update Path
+            string relativeCli = Path.Combine("llama.cpp", "llama-cli.exe");
+            txtLlamaCli.Text = relativeCli;
+            AppSettings.Instance.LlamaCliPath = relativeCli;
+            AppSettings.Instance.Save();
+
+            MessageBox.Show(
+                $"Successfully updated llama.cpp to {tagName} (Vulkan)!\n\nTarget directory:\n{targetDir}\n\nExecutable path configured to:\n{relativeCli}",
+                "llama.cpp Update Complete",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information
+            );
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Failed to download llama.cpp:\n{ex.Message}",
+                "Download Error",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error
+            );
+        }
+        finally
+        {
+            btnDownloadLlama.Text = originalText;
+            btnDownloadLlama.Enabled = true;
+        }
     }
 
     private void ExportModels()

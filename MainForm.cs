@@ -6,8 +6,8 @@ namespace eLlama;
 
 public class MainForm : Form
 {
-    private string ModelsRootDirectory => AppSettings.Instance.ModelsDirectory;
-    private string LlamaCliPath => AppSettings.Instance.LlamaCliPath;
+    private string ModelsRootDirectory => AppSettings.Instance.ResolvedModelsDirectory;
+    private string LlamaCliPath => AppSettings.Instance.ResolvedLlamaCliPath;
 
     private TextBox txtSearch = null!;
     private CheckBox chkHideProjectors = null!;
