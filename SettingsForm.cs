@@ -12,7 +12,8 @@ public class SettingsForm : Form
     private TextBox txtLlamaCli = null!;
     private CheckBox chkHideProjectors = null!;
     private ComboBox cmbExportFormat = null!;
-    private Button btnDownloadLlama = null!;
+    private Button btnUpdateELlama = null!;
+    private Button btnUpdateLlamaCpp = null!;
     private CheckBox chkCheckELlamaUpdates = null!;
     private CheckBox chkCheckLlamaUpdates = null!;
 
@@ -163,7 +164,7 @@ public class SettingsForm : Form
         {
             Text = "llama.cpp Backend",
             Location = new Point(12, 98),
-            Size = new Size(590, 115)
+            Size = new Size(590, 78)
         };
 
         var lblLlama = new Label
@@ -203,36 +204,20 @@ public class SettingsForm : Form
             }
         };
 
-        btnDownloadLlama = new Button
-        {
-            Text = "Download Latest llama.cpp (Vulkan)",
-            Location = new Point(14, 74),
-            Size = new Size(245, 28)
-        };
-        btnDownloadLlama.Click += (s, e) => DownloadLlamaCppAsync();
-
-        var lblDownloadHint = new Label
-        {
-            Text = "Auto-installs hardware-accelerated Vulkan binaries into .\\llama.cpp\\",
-            Location = new Point(266, 80),
-            AutoSize = true,
-            ForeColor = SystemColors.GrayText
-        };
-
-        grpBackend.Controls.AddRange(new Control[] { lblLlama, txtLlamaCli, btnBrowseLlama, btnDownloadLlama, lblDownloadHint });
+        grpBackend.Controls.AddRange(new Control[] { lblLlama, txtLlamaCli, btnBrowseLlama });
 
         // Display Preferences
         var grpFilter = new GroupBox
         {
             Text = "Display & Filtering",
-            Location = new Point(12, 222),
-            Size = new Size(590, 65)
+            Location = new Point(12, 184),
+            Size = new Size(590, 60)
         };
 
         chkHideProjectors = new CheckBox
         {
             Text = "Hide Vision Projectors (mmproj files) by default",
-            Location = new Point(14, 26),
+            Location = new Point(14, 24),
             AutoSize = true
         };
 
@@ -242,20 +227,20 @@ public class SettingsForm : Form
         var grpExport = new GroupBox
         {
             Text = "Export Model Library",
-            Location = new Point(12, 295),
-            Size = new Size(590, 85)
+            Location = new Point(12, 252),
+            Size = new Size(590, 80)
         };
 
         var lblExport = new Label
         {
             Text = "Format:",
-            Location = new Point(14, 28),
+            Location = new Point(14, 26),
             AutoSize = true
         };
 
         cmbExportFormat = new ComboBox
         {
-            Location = new Point(70, 25),
+            Location = new Point(70, 23),
             Size = new Size(160, 24),
             DropDownStyle = ComboBoxStyle.DropDownList
         };
@@ -271,7 +256,7 @@ public class SettingsForm : Form
         var btnExport = new Button
         {
             Text = "Export Model List...",
-            Location = new Point(245, 23),
+            Location = new Point(245, 21),
             Size = new Size(150, 28)
         };
         btnExport.Click += (s, e) => ExportModels();
@@ -279,7 +264,7 @@ public class SettingsForm : Form
         var lblExportHint = new Label
         {
             Text = "Export your full local model catalog in CSV, JSON, Markdown, or Plain Text format.",
-            Location = new Point(14, 58),
+            Location = new Point(14, 54),
             AutoSize = true,
             ForeColor = SystemColors.GrayText
         };
@@ -290,47 +275,144 @@ public class SettingsForm : Form
         var grpUpdates = new GroupBox
         {
             Text = "Updates",
-            Location = new Point(12, 388),
-            Size = new Size(590, 82)
+            Location = new Point(12, 340),
+            Size = new Size(590, 98)
         };
 
         chkCheckELlamaUpdates = new CheckBox
         {
             Text = "Check for eLlama updates on startup",
-            Location = new Point(14, 24),
+            Location = new Point(14, 26),
             AutoSize = true
         };
 
         chkCheckLlamaUpdates = new CheckBox
         {
             Text = "Check for llama.cpp updates on startup",
-            Location = new Point(14, 50),
+            Location = new Point(14, 56),
             AutoSize = true
         };
 
-        var btnCheckUpdatesNow = new Button
+        btnUpdateELlama = new Button
         {
-            Text = "Check for Updates Now",
-            Location = new Point(405, 30),
-            Size = new Size(170, 32)
+            Text = "Update eLlama",
+            Location = new Point(375, 18),
+            Size = new Size(200, 32)
         };
-        btnCheckUpdatesNow.Click += async (s, e) =>
+        btnUpdateELlama.Click += async (s, e) =>
         {
-            btnCheckUpdatesNow.Enabled = false;
-            string prev = btnCheckUpdatesNow.Text;
-            btnCheckUpdatesNow.Text = "Checking...";
+            btnUpdateELlama.Enabled = false;
+            string prev = btnUpdateELlama.Text;
+            btnUpdateELlama.Text = "Checking...";
             try
             {
-                await UpdateManager.CheckAllUpdatesInteractiveAsync(this, () => DownloadLlamaCppAsync());
+                var res = await UpdateManager.CheckELlamaAsync();
+                if (res.HasUpdate)
+                {
+                    var prompt = MessageBox.Show(
+                        this,
+                        $"A new version of eLlama is available!\n\nCurrent: {res.CurrentVersion}\nLatest:  {res.LatestVersion}\n\nWould you like to download and install this update now?",
+                        "eLlama Update Available",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Information
+                    );
+
+                    if (prompt == DialogResult.Yes)
+                    {
+                        if (!string.IsNullOrEmpty(res.AssetDownloadUrl))
+                        {
+                            await UpdateManager.DownloadAndRunELlamaInstallerAsync(
+                                this,
+                                res.AssetDownloadUrl,
+                                res.LatestVersion,
+                                status =>
+                                {
+                                    if (InvokeRequired) BeginInvoke(() => btnUpdateELlama.Text = status);
+                                    else btnUpdateELlama.Text = status;
+                                }
+                            );
+                        }
+                        else
+                        {
+                            try { Process.Start(new ProcessStartInfo(res.ReleaseUrl) { UseShellExecute = true }); } catch { }
+                        }
+                    }
+                }
+                else
+                {
+                    btnUpdateELlama.Text = "Latest is already installed";
+                    await Task.Delay(3000);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Failed to check for eLlama updates:\n{ex.Message}", "Update Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
-                btnCheckUpdatesNow.Text = prev;
-                btnCheckUpdatesNow.Enabled = true;
+                btnUpdateELlama.Text = "Update eLlama";
+                btnUpdateELlama.Enabled = true;
             }
         };
 
-        grpUpdates.Controls.AddRange(new Control[] { chkCheckELlamaUpdates, chkCheckLlamaUpdates, btnCheckUpdatesNow });
+        btnUpdateLlamaCpp = new Button
+        {
+            Text = "Update llama.cpp",
+            Location = new Point(375, 54),
+            Size = new Size(200, 32)
+        };
+        btnUpdateLlamaCpp.Click += async (s, e) =>
+        {
+            btnUpdateLlamaCpp.Enabled = false;
+            string prev = btnUpdateLlamaCpp.Text;
+            btnUpdateLlamaCpp.Text = "Checking...";
+            try
+            {
+                var res = await UpdateManager.CheckLlamaCppAsync();
+                if (res.HasUpdate)
+                {
+                    var prompt = MessageBox.Show(
+                        this,
+                        $"A new build of llama.cpp (Vulkan) is available!\n\nInstalled: {res.CurrentVersion}\nLatest:    {res.LatestVersion}\n\nWould you like to download and install this update now?",
+                        "llama.cpp Update Available",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Information
+                    );
+
+                    if (prompt == DialogResult.Yes)
+                    {
+                        await UpdateManager.DownloadAndInstallLlamaCppAsync(
+                            status =>
+                            {
+                                if (InvokeRequired) BeginInvoke(() => btnUpdateLlamaCpp.Text = status);
+                                else btnUpdateLlamaCpp.Text = status;
+                            },
+                            res.AssetDownloadUrl,
+                            res.LatestVersion
+                        );
+
+                        txtLlamaCli.Text = AppSettings.Instance.LlamaCliPath;
+                        await Task.Delay(3000);
+                    }
+                }
+                else
+                {
+                    btnUpdateLlamaCpp.Text = "Latest is already installed";
+                    await Task.Delay(3000);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Failed to update llama.cpp:\n{ex.Message}", "Update Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                btnUpdateLlamaCpp.Text = "Update llama.cpp";
+                btnUpdateLlamaCpp.Enabled = true;
+            }
+        };
+
+        grpUpdates.Controls.AddRange(new Control[] { chkCheckELlamaUpdates, chkCheckLlamaUpdates, btnUpdateELlama, btnUpdateLlamaCpp });
 
         tab.Controls.AddRange(new Control[] { grpDirectory, grpBackend, grpFilter, grpExport, grpUpdates });
     }
@@ -773,54 +855,7 @@ public class SettingsForm : Form
         Close();
     }
 
-    private async void DownloadLlamaCppAsync(string? downloadUrl = null, string? tagName = null)
-    {
-        btnDownloadLlama.Enabled = false;
-        string originalText = btnDownloadLlama.Text;
 
-        try
-        {
-            await UpdateManager.DownloadAndInstallLlamaCppAsync(
-                status =>
-                {
-                    if (InvokeRequired)
-                    {
-                        BeginInvoke(() => btnDownloadLlama.Text = status);
-                    }
-                    else
-                    {
-                        btnDownloadLlama.Text = status;
-                    }
-                },
-                downloadUrl,
-                tagName
-            );
-
-            txtLlamaCli.Text = AppSettings.Instance.LlamaCliPath;
-            MessageBox.Show(
-                this,
-                $"Successfully installed llama.cpp (Vulkan)!\n\nTarget directory:\n{Path.Combine(AppSettings.AppDir, "llama.cpp")}\n\nExecutable path configured to:\n{AppSettings.Instance.LlamaCliPath}",
-                "llama.cpp Installed",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information
-            );
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(
-                this,
-                $"Failed to download/install llama.cpp:\n{ex.Message}",
-                "Download Error",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error
-            );
-        }
-        finally
-        {
-            btnDownloadLlama.Text = originalText;
-            btnDownloadLlama.Enabled = true;
-        }
-    }
 
     private void ExportModels()
     {

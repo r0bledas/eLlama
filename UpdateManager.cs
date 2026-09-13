@@ -9,7 +9,7 @@ public record UpdateResult(bool HasUpdate, string CurrentVersion, string LatestV
 
 public static class UpdateManager
 {
-    public const string CurrentELlamaVersion = "1.1.2";
+    public const string CurrentELlamaVersion = "1.1.3";
 
     public static async Task<UpdateResult> CheckELlamaAsync()
     {
@@ -30,6 +30,21 @@ public static class UpdateManager
             string tagName = latest.GetProperty("tag_name").GetString() ?? "";
             string htmlUrl = latest.GetProperty("html_url").GetString() ?? "https://github.com/r0bledas/eLlama/releases";
 
+            string? setupUrl = null;
+            if (latest.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var asset in assets.EnumerateArray())
+                {
+                    string name = asset.GetProperty("name").GetString() ?? "";
+                    if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
+                        (name.Contains("Setup", StringComparison.OrdinalIgnoreCase) || name.Contains("installer", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        setupUrl = asset.GetProperty("browser_download_url").GetString();
+                        break;
+                    }
+                }
+            }
+
             string cleanLatest = tagName.TrimStart('v', 'V');
             string cleanCurrent = CurrentELlamaVersion.TrimStart('v', 'V');
 
@@ -37,15 +52,15 @@ public static class UpdateManager
             {
                 if (vLatest > vCurrent)
                 {
-                    return new UpdateResult(true, CurrentELlamaVersion, tagName, htmlUrl, null);
+                    return new UpdateResult(true, CurrentELlamaVersion, tagName, htmlUrl, setupUrl);
                 }
             }
             else if (!string.Equals(cleanLatest, cleanCurrent, StringComparison.OrdinalIgnoreCase))
             {
-                return new UpdateResult(true, CurrentELlamaVersion, tagName, htmlUrl, null);
+                return new UpdateResult(true, CurrentELlamaVersion, tagName, htmlUrl, setupUrl);
             }
 
-            return new UpdateResult(false, CurrentELlamaVersion, tagName, htmlUrl, null);
+            return new UpdateResult(false, CurrentELlamaVersion, tagName, htmlUrl, setupUrl);
         }
         catch
         {
@@ -412,6 +427,90 @@ public static class UpdateManager
         finally
         {
             try { if (File.Exists(tempZip)) File.Delete(tempZip); } catch { }
+        }
+    }
+
+    public static async Task DownloadAndRunELlamaInstallerAsync(
+        Form parent,
+        string downloadUrl,
+        string targetVersion,
+        Action<string>? statusCallback = null)
+    {
+        string tempInstaller = Path.Combine(Path.GetTempPath(), $"eLlama-Setup-{targetVersion}_{Guid.NewGuid():N}.exe");
+
+        try
+        {
+            statusCallback?.Invoke("Downloading 0%...");
+            using var http = new HttpClient();
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("eLlama-Updater");
+
+            using (var response = await http.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead))
+            {
+                response.EnsureSuccessStatusCode();
+                long? totalBytes = response.Content.Headers.ContentLength;
+
+                using var stream = await response.Content.ReadAsStreamAsync();
+                using var fileStream = new FileStream(tempInstaller, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
+
+                var buffer = new byte[81920];
+                long totalRead = 0;
+                int read;
+                DateTime lastUpdate = DateTime.Now;
+
+                while ((read = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                {
+                    await fileStream.WriteAsync(buffer, 0, read);
+                    totalRead += read;
+
+                    if ((DateTime.Now - lastUpdate).TotalMilliseconds > 200)
+                    {
+                        lastUpdate = DateTime.Now;
+                        if (totalBytes.HasValue && totalBytes.Value > 0)
+                        {
+                            int pct = (int)((totalRead * 100) / totalBytes.Value);
+                            statusCallback?.Invoke($"Downloading {pct}%...");
+                        }
+                        else
+                        {
+                            statusCallback?.Invoke($"Downloading {totalRead / (1024 * 1024)} MB...");
+                        }
+                    }
+                }
+            }
+
+            statusCallback?.Invoke("Ready to Install");
+
+            var confirm = MessageBox.Show(
+                parent,
+                $"Download of eLlama {targetVersion} completed successfully!\n\nClick OK to close eLlama and run the installer. The installer file will be cleaned up automatically after installation.",
+                "eLlama Update Ready",
+                MessageBoxButtons.OKCancel,
+                MessageBoxIcon.Information
+            );
+
+            if (confirm != DialogResult.OK)
+            {
+                try { File.Delete(tempInstaller); } catch { }
+                return;
+            }
+
+            // Launch installer with self-cleaning command
+            var psi = new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/c start /wait \"\" \"{tempInstaller}\" & del \"{tempInstaller}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            Process.Start(psi);
+
+            Application.Exit();
+            Environment.Exit(0);
+        }
+        catch (Exception ex)
+        {
+            try { if (File.Exists(tempInstaller)) File.Delete(tempInstaller); } catch { }
+            MessageBox.Show(parent, $"Failed to download update:\n{ex.Message}", "Update Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 }

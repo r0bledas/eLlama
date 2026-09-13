@@ -1,6 +1,6 @@
 ; Inno Setup Script for eLlama
 #define MyAppName "eLlama"
-#define MyAppVersion "1.1.2"
+#define MyAppVersion "1.1.3"
 #define MyAppPublisher "Raudel"
 #define MyAppURL "https://github.com/r0bledas/eLlama"
 #define MyAppExeName "eLlama.exe"
@@ -18,7 +18,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=Release
-OutputBaseFilename=eLlama-Setup-v1.1.2
+OutputBaseFilename=eLlama-Setup-v1.1.3
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -34,7 +34,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "PortableRelease\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "PortableRelease\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "settings.json"
+Source: "PortableRelease\settings.json"; DestDir: "{app}"; Flags: onlyifdoesntexist
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

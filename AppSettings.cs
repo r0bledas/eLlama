@@ -116,30 +116,62 @@ public class AppSettings
         return fullPath;
     }
 
+    public static string AppDataSettingsFile =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "eLlama", "settings.json");
+
     public static AppSettings Load()
     {
         string settingsFile = GetSettingsFilePath();
+        AppSettings? settings = null;
+
         try
         {
             if (File.Exists(settingsFile))
             {
                 string json = File.ReadAllText(settingsFile);
-                var settings = JsonSerializer.Deserialize<AppSettings>(json);
-                if (settings != null)
+                settings = JsonSerializer.Deserialize<AppSettings>(json);
+            }
+        }
+        catch { }
+
+        // If local settings is missing or points to default/non-existent folder, check AppData backup
+        try
+        {
+            string appDataFile = AppDataSettingsFile;
+            if (File.Exists(appDataFile))
+            {
+                string backupJson = File.ReadAllText(appDataFile);
+                var backupSettings = JsonSerializer.Deserialize<AppSettings>(backupJson);
+                if (backupSettings != null)
                 {
-                    if (string.IsNullOrWhiteSpace(settings.ModelsDirectory))
+                    if (settings == null)
                     {
-                        settings.ModelsDirectory = GetDefaultModelsDirectory();
+                        settings = backupSettings;
                     }
-                    if (string.IsNullOrWhiteSpace(settings.LlamaCliPath))
+                    else if ((settings.ModelsDirectory == "models" || !Directory.Exists(settings.ResolvedModelsDirectory)) &&
+                             !string.IsNullOrWhiteSpace(backupSettings.ModelsDirectory) &&
+                             Directory.Exists(backupSettings.ResolvedModelsDirectory))
                     {
-                        settings.LlamaCliPath = GetDefaultLlamaCliPath();
+                        // Restore previously configured models folder
+                        settings.ModelsDirectory = backupSettings.ModelsDirectory;
                     }
-                    return settings;
                 }
             }
         }
         catch { }
+
+        if (settings != null)
+        {
+            if (string.IsNullOrWhiteSpace(settings.ModelsDirectory))
+            {
+                settings.ModelsDirectory = GetDefaultModelsDirectory();
+            }
+            if (string.IsNullOrWhiteSpace(settings.LlamaCliPath))
+            {
+                settings.LlamaCliPath = GetDefaultLlamaCliPath();
+            }
+            return settings;
+        }
 
         return new AppSettings();
     }
@@ -157,6 +189,19 @@ public class AppSettings
 
             string json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(settingsFile, json);
+
+            // Also maintain a backup in %APPDATA%\eLlama\settings.json for cross-install preservation
+            try
+            {
+                string appDataFile = AppDataSettingsFile;
+                string? appDataDir = Path.GetDirectoryName(appDataFile);
+                if (!string.IsNullOrEmpty(appDataDir))
+                {
+                    Directory.CreateDirectory(appDataDir);
+                }
+                File.WriteAllText(appDataFile, json);
+            }
+            catch { }
         }
         catch { }
     }
