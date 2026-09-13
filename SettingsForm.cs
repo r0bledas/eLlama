@@ -13,6 +13,8 @@ public class SettingsForm : Form
     private CheckBox chkHideProjectors = null!;
     private ComboBox cmbExportFormat = null!;
     private Button btnDownloadLlama = null!;
+    private CheckBox chkCheckELlamaUpdates = null!;
+    private CheckBox chkCheckLlamaUpdates = null!;
 
     // Hardware & Compute
     private NumericUpDown numThreads = null!;
@@ -283,7 +285,53 @@ public class SettingsForm : Form
 
         grpExport.Controls.AddRange(new Control[] { lblExport, cmbExportFormat, btnExport, lblExportHint });
 
-        tab.Controls.AddRange(new Control[] { grpDirectory, grpBackend, grpFilter, grpExport });
+        // Updates
+        var grpUpdates = new GroupBox
+        {
+            Text = "Updates",
+            Location = new Point(12, 388),
+            Size = new Size(590, 82)
+        };
+
+        chkCheckELlamaUpdates = new CheckBox
+        {
+            Text = "Check for eLlama updates on startup",
+            Location = new Point(14, 24),
+            AutoSize = true
+        };
+
+        chkCheckLlamaUpdates = new CheckBox
+        {
+            Text = "Check for llama.cpp updates on startup",
+            Location = new Point(14, 50),
+            AutoSize = true
+        };
+
+        var btnCheckUpdatesNow = new Button
+        {
+            Text = "Check for Updates Now",
+            Location = new Point(405, 30),
+            Size = new Size(170, 32)
+        };
+        btnCheckUpdatesNow.Click += async (s, e) =>
+        {
+            btnCheckUpdatesNow.Enabled = false;
+            string prev = btnCheckUpdatesNow.Text;
+            btnCheckUpdatesNow.Text = "Checking...";
+            try
+            {
+                await UpdateManager.CheckAllUpdatesInteractiveAsync(this, () => DownloadLlamaCppAsync());
+            }
+            finally
+            {
+                btnCheckUpdatesNow.Text = prev;
+                btnCheckUpdatesNow.Enabled = true;
+            }
+        };
+
+        grpUpdates.Controls.AddRange(new Control[] { chkCheckELlamaUpdates, chkCheckLlamaUpdates, btnCheckUpdatesNow });
+
+        tab.Controls.AddRange(new Control[] { grpDirectory, grpBackend, grpFilter, grpExport, grpUpdates });
     }
 
     private void BuildAdvancedTab(TabPage tab)
@@ -555,6 +603,8 @@ public class SettingsForm : Form
         txtDirectory.Text = s.ModelsDirectory;
         txtLlamaCli.Text = s.LlamaCliPath;
         chkHideProjectors.Checked = s.HideProjectors;
+        chkCheckELlamaUpdates.Checked = s.CheckForELlamaUpdates;
+        chkCheckLlamaUpdates.Checked = s.CheckForLlamaCppUpdates;
 
         // Compute
         numThreads.Value = Math.Clamp(s.Threads, numThreads.Minimum, numThreads.Maximum);
@@ -650,6 +700,8 @@ public class SettingsForm : Form
         numRepeatPenalty.Value = 1.10m;
         numRepeatLastN.Value = 64;
         cmbMaxTokens.SelectedIndex = 0;
+        chkCheckELlamaUpdates.Checked = true;
+        chkCheckLlamaUpdates.Checked = true;
     }
 
     private void SaveSettings()
@@ -669,6 +721,8 @@ public class SettingsForm : Form
         }
 
         s.HideProjectors = chkHideProjectors.Checked;
+        s.CheckForELlamaUpdates = chkCheckELlamaUpdates.Checked;
+        s.CheckForLlamaCppUpdates = chkCheckLlamaUpdates.Checked;
 
         // Compute
         s.Threads = (int)numThreads.Value;

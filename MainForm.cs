@@ -57,7 +57,9 @@ public class MainForm : Form
     {
         base.OnShown(e);
         CheckForModelsOnStartup();
+        _ = UpdateManager.CheckStartupUpdatesAsync(this);
     }
+
 
     private void CheckForModelsOnStartup()
     {
@@ -248,6 +250,10 @@ public class MainForm : Form
         var menuCopyPath = new ToolStripMenuItem("Copy File Path", null, (s, e) => CopyFilePath());
         var menuOpenFolder = new ToolStripMenuItem("Open in File Explorer", null, (s, e) => OpenSelectedFolder());
         var menuRefresh = new ToolStripMenuItem("Refresh List", null, (s, e) => LoadModels());
+        var menuCheckUpdates = new ToolStripMenuItem("Check for Updates...", null, async (s, e) =>
+        {
+            await UpdateManager.CheckAllUpdatesInteractiveAsync(this, () => OpenSettings());
+        });
 
         contextMenu.Items.AddRange(new ToolStripItem[]
         {
@@ -257,7 +263,9 @@ public class MainForm : Form
             menuCopyPath,
             new ToolStripSeparator(),
             menuOpenFolder,
-            menuRefresh
+            menuRefresh,
+            new ToolStripSeparator(),
+            menuCheckUpdates
         });
         lvModels.ContextMenuStrip = contextMenu;
 
@@ -273,6 +281,39 @@ public class MainForm : Form
         {
             Text = "llama.cpp: Checking...",
             Alignment = ToolStripItemAlignment.Right
+        };
+
+        // Updates button
+        var btnUpdates = new Button
+        {
+            Text = "Updates",
+            Size = new Size(68, 24),
+            AutoSize = false,
+            FlatStyle = FlatStyle.System,
+            Cursor = Cursors.Hand
+        };
+        btnUpdates.Click += async (s, e) =>
+        {
+            btnUpdates.Enabled = false;
+            string prev = btnUpdates.Text;
+            btnUpdates.Text = "...";
+            try
+            {
+                await UpdateManager.CheckAllUpdatesInteractiveAsync(this, () => OpenSettings());
+            }
+            finally
+            {
+                btnUpdates.Text = prev;
+                btnUpdates.Enabled = true;
+            }
+        };
+
+        var hostUpdates = new ToolStripControlHost(btnUpdates)
+        {
+            AutoSize = false,
+            Size = new Size(68, 24),
+            Alignment = ToolStripItemAlignment.Right,
+            Margin = new Padding(2, 2, 4, 2)
         };
 
         // Settings button
@@ -291,17 +332,18 @@ public class MainForm : Form
             AutoSize = false,
             Size = new Size(72, 24),
             Alignment = ToolStripItemAlignment.Right,
-            Margin = new Padding(6, 2, 8, 2)
+            Margin = new Padding(4, 2, 8, 2)
         };
 
-        statusStrip.Items.AddRange(new ToolStripItem[] { lblCount, lblBackendStatus, hostSettings });
+        statusStrip.Items.AddRange(new ToolStripItem[] { lblCount, lblBackendStatus, hostUpdates, hostSettings });
+
 
         Controls.Add(lvModels);
         Controls.Add(topPanel);
         Controls.Add(statusStrip);
     }
 
-    private void OpenSettings()
+    public void OpenSettings()
     {
         using var settingsForm = new SettingsForm(allModels, () =>
         {
@@ -310,6 +352,11 @@ public class MainForm : Form
             LoadModels();
         });
         settingsForm.ShowDialog(this);
+    }
+
+    public void OpenSettingsToUpdates()
+    {
+        OpenSettings();
     }
 
     private void UpdateBackendStatus()

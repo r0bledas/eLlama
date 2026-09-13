@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace eLlama;
@@ -43,6 +43,11 @@ public class AppSettings
     public double RepeatPenalty { get; set; } = 1.10;
     public int RepeatLastN { get; set; } = 64;
     public int MaxTokens { get; set; } = -1;
+
+    // Updates
+    public bool CheckForELlamaUpdates { get; set; } = true;
+    public bool CheckForLlamaCppUpdates { get; set; } = true;
+    public string InstalledLlamaCppVersion { get; set; } = "";
 
     public static string GetDefaultModelsDirectory()
     {
