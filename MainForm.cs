@@ -250,10 +250,6 @@ public class MainForm : Form
         var menuCopyPath = new ToolStripMenuItem("Copy File Path", null, (s, e) => CopyFilePath());
         var menuOpenFolder = new ToolStripMenuItem("Open in File Explorer", null, (s, e) => OpenSelectedFolder());
         var menuRefresh = new ToolStripMenuItem("Refresh List", null, (s, e) => LoadModels());
-        var menuCheckUpdates = new ToolStripMenuItem("Check for Updates...", null, async (s, e) =>
-        {
-            await UpdateManager.CheckAllUpdatesInteractiveAsync(this, () => OpenSettings());
-        });
 
         contextMenu.Items.AddRange(new ToolStripItem[]
         {
@@ -263,9 +259,7 @@ public class MainForm : Form
             menuCopyPath,
             new ToolStripSeparator(),
             menuOpenFolder,
-            menuRefresh,
-            new ToolStripSeparator(),
-            menuCheckUpdates
+            menuRefresh
         });
         lvModels.ContextMenuStrip = contextMenu;
 
@@ -281,39 +275,6 @@ public class MainForm : Form
         {
             Text = "llama.cpp: Checking...",
             Alignment = ToolStripItemAlignment.Right
-        };
-
-        // Updates button
-        var btnUpdates = new Button
-        {
-            Text = "Updates",
-            Size = new Size(68, 24),
-            AutoSize = false,
-            FlatStyle = FlatStyle.System,
-            Cursor = Cursors.Hand
-        };
-        btnUpdates.Click += async (s, e) =>
-        {
-            btnUpdates.Enabled = false;
-            string prev = btnUpdates.Text;
-            btnUpdates.Text = "...";
-            try
-            {
-                await UpdateManager.CheckAllUpdatesInteractiveAsync(this, () => OpenSettings());
-            }
-            finally
-            {
-                btnUpdates.Text = prev;
-                btnUpdates.Enabled = true;
-            }
-        };
-
-        var hostUpdates = new ToolStripControlHost(btnUpdates)
-        {
-            AutoSize = false,
-            Size = new Size(68, 24),
-            Alignment = ToolStripItemAlignment.Right,
-            Margin = new Padding(2, 2, 4, 2)
         };
 
         // Settings button
@@ -335,12 +296,51 @@ public class MainForm : Form
             Margin = new Padding(4, 2, 8, 2)
         };
 
-        statusStrip.Items.AddRange(new ToolStripItem[] { lblCount, lblBackendStatus, hostUpdates, hostSettings });
-
+        statusStrip.Items.AddRange(new ToolStripItem[] { lblCount, lblBackendStatus, hostSettings });
 
         Controls.Add(lvModels);
         Controls.Add(topPanel);
         Controls.Add(statusStrip);
+    }
+
+    public async Task PerformLlamaUpdateAsync(string? downloadUrl = null, string? tagName = null)
+    {
+        lblBackendStatus.ForeColor = Color.DarkOrange;
+        lblBackendStatus.Text = "Updating llama.cpp: 0%";
+
+        try
+        {
+            bool success = await UpdateManager.DownloadAndInstallLlamaCppAsync(
+                status =>
+                {
+                    if (InvokeRequired)
+                    {
+                        BeginInvoke(() => lblBackendStatus.Text = status);
+                    }
+                    else
+                    {
+                        lblBackendStatus.Text = status;
+                    }
+                },
+                downloadUrl,
+                tagName
+            );
+
+            if (success)
+            {
+                lblBackendStatus.ForeColor = Color.DarkGreen;
+                lblBackendStatus.Text = "Done";
+                await Task.Delay(3000);
+                UpdateBackendStatus();
+            }
+        }
+        catch (Exception ex)
+        {
+            lblBackendStatus.ForeColor = Color.Red;
+            lblBackendStatus.Text = "Update Failed";
+            MessageBox.Show(this, $"Failed to update llama.cpp:\n{ex.Message}", "Update Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            UpdateBackendStatus();
+        }
     }
 
     public void OpenSettings()

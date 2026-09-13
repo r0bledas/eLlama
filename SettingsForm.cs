@@ -55,7 +55,7 @@ public class SettingsForm : Form
     private void InitializeComponent()
     {
         Text = "Settings";
-        Size = new Size(660, 580);
+        Size = new Size(660, 640);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
@@ -66,12 +66,12 @@ public class SettingsForm : Form
         var tabControl = new TabControl
         {
             Location = new Point(12, 12),
-            Size = new Size(620, 480)
+            Size = new Size(620, 535)
         };
 
-        var tabGeneral = new TabPage("General");
-        var tabAdvanced = new TabPage("Advanced Inference");
-        var tabAbout = new TabPage("About & Credits");
+        var tabGeneral = new TabPage("General") { AutoScroll = true };
+        var tabAdvanced = new TabPage("Advanced Inference") { AutoScroll = true };
+        var tabAbout = new TabPage("About") { AutoScroll = true };
 
         BuildGeneralTab(tabGeneral);
         BuildAdvancedTab(tabAdvanced);
@@ -85,7 +85,7 @@ public class SettingsForm : Form
         var btnReset = new Button
         {
             Text = "Reset Defaults",
-            Location = new Point(14, 502),
+            Location = new Point(14, 558),
             Size = new Size(125, 28)
         };
         btnReset.Click += (s, e) => ResetToDefaults();
@@ -93,7 +93,7 @@ public class SettingsForm : Form
         var btnSave = new Button
         {
             Text = "Save",
-            Location = new Point(440, 502),
+            Location = new Point(440, 558),
             Size = new Size(90, 28),
             DialogResult = DialogResult.OK
         };
@@ -102,10 +102,11 @@ public class SettingsForm : Form
         var btnCancel = new Button
         {
             Text = "Cancel",
-            Location = new Point(542, 502),
+            Location = new Point(542, 558),
             Size = new Size(90, 28),
             DialogResult = DialogResult.Cancel
         };
+        btnCancel.Click += (s, e) => Close();
 
         Controls.AddRange(new Control[] { tabControl, btnReset, btnSave, btnCancel });
 
@@ -772,144 +773,34 @@ public class SettingsForm : Form
         Close();
     }
 
-    private async void DownloadLlamaCppAsync()
+    private async void DownloadLlamaCppAsync(string? downloadUrl = null, string? tagName = null)
     {
         btnDownloadLlama.Enabled = false;
         string originalText = btnDownloadLlama.Text;
-        btnDownloadLlama.Text = "Checking releases...";
 
         try
         {
-            using var http = new HttpClient();
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("eLlama-Updater");
-
-            // 1. Query GitHub releases
-            string apiUrl = "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=5";
-            string json = await http.GetStringAsync(apiUrl);
-
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.ValueKind != JsonValueKind.Array || doc.RootElement.GetArrayLength() == 0)
-            {
-                throw new Exception("No releases found on ggml-org/llama.cpp.");
-            }
-
-            var latestRelease = doc.RootElement[0];
-            string tagName = latestRelease.GetProperty("tag_name").GetString() ?? "latest";
-
-            // 2. Find Vulkan asset (fallback CPU)
-            string? downloadUrl = null;
-            string? assetName = null;
-
-            if (latestRelease.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var asset in assets.EnumerateArray())
+            await UpdateManager.DownloadAndInstallLlamaCppAsync(
+                status =>
                 {
-                    string name = asset.GetProperty("name").GetString() ?? "";
-                    if (name.Contains("win", StringComparison.OrdinalIgnoreCase) &&
-                        name.Contains("vulkan", StringComparison.OrdinalIgnoreCase) &&
-                        name.Contains("x64", StringComparison.OrdinalIgnoreCase) &&
-                        name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                    if (InvokeRequired)
                     {
-                        downloadUrl = asset.GetProperty("browser_download_url").GetString();
-                        assetName = name;
-                        break;
+                        BeginInvoke(() => btnDownloadLlama.Text = status);
                     }
-                }
-
-                // Fallback to CPU if Vulkan not found
-                if (downloadUrl == null)
-                {
-                    foreach (var asset in assets.EnumerateArray())
+                    else
                     {
-                        string name = asset.GetProperty("name").GetString() ?? "";
-                        if (name.Contains("win", StringComparison.OrdinalIgnoreCase) &&
-                            name.Contains("cpu", StringComparison.OrdinalIgnoreCase) &&
-                            name.Contains("x64", StringComparison.OrdinalIgnoreCase) &&
-                            name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                        {
-                            downloadUrl = asset.GetProperty("browser_download_url").GetString();
-                            assetName = name;
-                            break;
-                        }
+                        btnDownloadLlama.Text = status;
                     }
-                }
-            }
-
-            if (string.IsNullOrEmpty(downloadUrl))
-            {
-                throw new Exception($"Could not find a Windows x64 release asset in llama.cpp {tagName}.");
-            }
-
-            var confirm = MessageBox.Show(
-                $"Found latest release: {tagName}\nAsset: {assetName}\n\nWould you like to download and install this into '.\\llama.cpp\\'?",
-                "Download llama.cpp",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question
+                },
+                downloadUrl,
+                tagName
             );
 
-            if (confirm != DialogResult.Yes)
-            {
-                btnDownloadLlama.Text = originalText;
-                btnDownloadLlama.Enabled = true;
-                return;
-            }
-
-            // 3. Download
-            btnDownloadLlama.Text = "Downloading...";
-            string tempZip = Path.Combine(Path.GetTempPath(), $"llama_{Guid.NewGuid():N}.zip");
-
-            using (var response = await http.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead))
-            {
-                response.EnsureSuccessStatusCode();
-                long? totalBytes = response.Content.Headers.ContentLength;
-
-                using var stream = await response.Content.ReadAsStreamAsync();
-                using var fileStream = new FileStream(tempZip, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
-
-                var buffer = new byte[81920];
-                long totalRead = 0;
-                int read;
-                DateTime lastUpdate = DateTime.Now;
-
-                while ((read = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
-                {
-                    await fileStream.WriteAsync(buffer, 0, read);
-                    totalRead += read;
-
-                    if ((DateTime.Now - lastUpdate).TotalMilliseconds > 250)
-                    {
-                        lastUpdate = DateTime.Now;
-                        if (totalBytes.HasValue && totalBytes.Value > 0)
-                        {
-                            int pct = (int)((totalRead * 100) / totalBytes.Value);
-                            btnDownloadLlama.Text = $"Downloading {pct}%...";
-                        }
-                        else
-                        {
-                            btnDownloadLlama.Text = $"Downloading ({totalRead / (1024 * 1024)} MB)...";
-                        }
-                    }
-                }
-            }
-
-            // 4. Extract
-            btnDownloadLlama.Text = "Extracting...";
-            string targetDir = Path.Combine(AppSettings.AppDir, "llama.cpp");
-            Directory.CreateDirectory(targetDir);
-
-            ZipFile.ExtractToDirectory(tempZip, targetDir, overwriteFiles: true);
-
-            try { File.Delete(tempZip); } catch { }
-
-            // 5. Update Path
-            string relativeCli = Path.Combine("llama.cpp", "llama-cli.exe");
-            txtLlamaCli.Text = relativeCli;
-            AppSettings.Instance.LlamaCliPath = relativeCli;
-            AppSettings.Instance.Save();
-
+            txtLlamaCli.Text = AppSettings.Instance.LlamaCliPath;
             MessageBox.Show(
-                $"Successfully updated llama.cpp to {tagName} (Vulkan)!\n\nTarget directory:\n{targetDir}\n\nExecutable path configured to:\n{relativeCli}",
-                "llama.cpp Update Complete",
+                this,
+                $"Successfully installed llama.cpp (Vulkan)!\n\nTarget directory:\n{Path.Combine(AppSettings.AppDir, "llama.cpp")}\n\nExecutable path configured to:\n{AppSettings.Instance.LlamaCliPath}",
+                "llama.cpp Installed",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information
             );
@@ -917,7 +808,8 @@ public class SettingsForm : Form
         catch (Exception ex)
         {
             MessageBox.Show(
-                $"Failed to download llama.cpp:\n{ex.Message}",
+                this,
+                $"Failed to download/install llama.cpp:\n{ex.Message}",
                 "Download Error",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -199,7 +200,7 @@ public static class UpdateManager
                 {
                     var prompt = MessageBox.Show(
                         parent,
-                        $"A new build of llama.cpp (Vulkan) is available!\n\nInstalled: {llamaRes.CurrentVersion}\nLatest: {llamaRes.LatestVersion}\n\nWould you like to open Settings to download and install the latest llama.cpp binaries?",
+                        $"A new build of llama.cpp (Vulkan) is available!\n\nInstalled: {llamaRes.CurrentVersion}\nLatest: {llamaRes.LatestVersion}\n\nWould you like to update llama.cpp now?",
                         "llama.cpp Update Available",
                         MessageBoxButtons.YesNo,
                         MessageBoxIcon.Information
@@ -207,10 +208,9 @@ public static class UpdateManager
 
                     if (prompt == DialogResult.Yes)
                     {
-                        // Open Settings dialog
                         if (parent is MainForm mf)
                         {
-                            mf.OpenSettingsToUpdates();
+                            _ = mf.PerformLlamaUpdateAsync(llamaRes.AssetDownloadUrl, llamaRes.LatestVersion);
                         }
                     }
                 });
@@ -260,14 +260,21 @@ public static class UpdateManager
         {
             var msg = MessageBox.Show(
                 parent,
-                $"A new build of llama.cpp (Vulkan) is available!\n\nInstalled: {lRes.CurrentVersion}\nLatest:    {lRes.LatestVersion}\n\nWould you like to open Settings to download and install this build now?",
+                $"A new build of llama.cpp (Vulkan) is available!\n\nInstalled: {lRes.CurrentVersion}\nLatest:    {lRes.LatestVersion}\n\nWould you like to download and install this build now?",
                 "llama.cpp Update Available",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Information
             );
             if (msg == DialogResult.Yes)
             {
-                openSettingsAction?.Invoke();
+                if (openSettingsAction != null)
+                {
+                    openSettingsAction.Invoke();
+                }
+                else if (parent is MainForm mf)
+                {
+                    _ = mf.PerformLlamaUpdateAsync(lRes.AssetDownloadUrl, lRes.LatestVersion);
+                }
             }
         }
         else
@@ -279,6 +286,132 @@ public static class UpdateManager
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information
             );
+        }
+    }
+
+    public static async Task<bool> DownloadAndInstallLlamaCppAsync(
+        Action<string>? statusCallback = null,
+        string? specificDownloadUrl = null,
+        string? specificTagName = null)
+    {
+        using var http = new HttpClient();
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("eLlama-Updater");
+
+        string? downloadUrl = specificDownloadUrl;
+        string? tagName = specificTagName;
+
+        if (string.IsNullOrEmpty(downloadUrl))
+        {
+            statusCallback?.Invoke("Checking releases...");
+            string apiUrl = "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=5";
+            string json = await http.GetStringAsync(apiUrl);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array || doc.RootElement.GetArrayLength() == 0)
+            {
+                throw new Exception("No releases found on ggml-org/llama.cpp.");
+            }
+            var latestRelease = doc.RootElement[0];
+            tagName = latestRelease.GetProperty("tag_name").GetString() ?? "latest";
+
+            if (latestRelease.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var asset in assets.EnumerateArray())
+                {
+                    string name = asset.GetProperty("name").GetString() ?? "";
+                    if (name.Contains("win", StringComparison.OrdinalIgnoreCase) &&
+                        name.Contains("vulkan", StringComparison.OrdinalIgnoreCase) &&
+                        name.Contains("x64", StringComparison.OrdinalIgnoreCase) &&
+                        name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                    {
+                        downloadUrl = asset.GetProperty("browser_download_url").GetString();
+                        break;
+                    }
+                }
+
+                if (downloadUrl == null)
+                {
+                    foreach (var asset in assets.EnumerateArray())
+                    {
+                        string name = asset.GetProperty("name").GetString() ?? "";
+                        if (name.Contains("win", StringComparison.OrdinalIgnoreCase) &&
+                            name.Contains("cpu", StringComparison.OrdinalIgnoreCase) &&
+                            name.Contains("x64", StringComparison.OrdinalIgnoreCase) &&
+                            name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                        {
+                            downloadUrl = asset.GetProperty("browser_download_url").GetString();
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (string.IsNullOrEmpty(downloadUrl))
+        {
+            throw new Exception("Could not find a compatible Windows x64 release asset for llama.cpp.");
+        }
+
+        statusCallback?.Invoke("Updating llama.cpp: 0%");
+        string tempZip = Path.Combine(Path.GetTempPath(), $"llama_{Guid.NewGuid():N}.zip");
+
+        try
+        {
+            using (var response = await http.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead))
+            {
+                response.EnsureSuccessStatusCode();
+                long? totalBytes = response.Content.Headers.ContentLength;
+
+                using var stream = await response.Content.ReadAsStreamAsync();
+                using var fileStream = new FileStream(tempZip, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
+
+                var buffer = new byte[81920];
+                long totalRead = 0;
+                int read;
+                DateTime lastUpdate = DateTime.Now;
+
+                while ((read = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                {
+                    await fileStream.WriteAsync(buffer, 0, read);
+                    totalRead += read;
+
+                    if ((DateTime.Now - lastUpdate).TotalMilliseconds > 200)
+                    {
+                        lastUpdate = DateTime.Now;
+                        if (totalBytes.HasValue && totalBytes.Value > 0)
+                        {
+                            int pct = (int)((totalRead * 100) / totalBytes.Value);
+                            statusCallback?.Invoke($"Updating llama.cpp: {pct}%");
+                        }
+                        else
+                        {
+                            statusCallback?.Invoke($"Updating llama.cpp: {totalRead / (1024 * 1024)} MB");
+                        }
+                    }
+                }
+            }
+
+            // Extracting
+            statusCallback?.Invoke("Installing...");
+            string targetDir = Path.Combine(AppSettings.AppDir, "llama.cpp");
+            Directory.CreateDirectory(targetDir);
+
+            ZipFile.ExtractToDirectory(tempZip, targetDir, overwriteFiles: true);
+
+            // Update AppSettings
+            string relativeCli = Path.Combine("llama.cpp", "llama-cli.exe");
+            AppSettings.Instance.LlamaCliPath = relativeCli;
+            if (!string.IsNullOrEmpty(tagName))
+            {
+                AppSettings.Instance.InstalledLlamaCppVersion = tagName;
+            }
+            AppSettings.Instance.Save();
+
+            statusCallback?.Invoke("Done");
+            return true;
+        }
+        finally
+        {
+            try { if (File.Exists(tempZip)) File.Delete(tempZip); } catch { }
         }
     }
 }
