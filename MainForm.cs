@@ -49,9 +49,51 @@ public class MainForm : Form
     public MainForm()
     {
         InitializeComponent();
-        LoadModels();
+        LoadModels(silentIfNotFound: true);
         UpdateBackendStatus();
     }
+
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        CheckForModelsOnStartup();
+    }
+
+    private void CheckForModelsOnStartup()
+    {
+        if (allModels.Count == 0)
+        {
+            var result = MessageBox.Show(
+                this,
+                $"No GGUF models were found in the configured directory:\n\n{ModelsRootDirectory}\n\nWould you like to select your models folder now?",
+                "Select Models Folder",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question
+            );
+
+            if (result == DialogResult.Yes)
+            {
+                using var fbd = new FolderBrowserDialog
+                {
+                    Description = "Select the folder containing your GGUF model files",
+                    UseDescriptionForTitle = true
+                };
+
+                if (Directory.Exists(ModelsRootDirectory))
+                {
+                    fbd.InitialDirectory = ModelsRootDirectory;
+                }
+
+                if (fbd.ShowDialog(this) == DialogResult.OK && !string.IsNullOrWhiteSpace(fbd.SelectedPath))
+                {
+                    AppSettings.Instance.ModelsDirectory = AppSettings.ToRelativePath(fbd.SelectedPath);
+                    AppSettings.Instance.Save();
+                    LoadModels();
+                }
+            }
+        }
+    }
+
 
     private void InitializeComponent()
     {
@@ -284,13 +326,19 @@ public class MainForm : Form
         }
     }
 
-    private void LoadModels()
+    private void LoadModels(bool silentIfNotFound = false)
     {
         allModels.Clear();
 
         if (!Directory.Exists(ModelsRootDirectory))
         {
-            MessageBox.Show($"Models directory not found: {ModelsRootDirectory}", "Directory Not Found", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (!silentIfNotFound)
+            {
+                MessageBox.Show(this, $"Models directory not found:\n{ModelsRootDirectory}", "Directory Not Found", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            FilterModels();
+            UpdateSelectedButtons();
+            UpdateBackendStatus();
             return;
         }
 
@@ -305,7 +353,7 @@ public class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error reading models:\n{ex.Message}", "Scan Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, $"Error reading models:\n{ex.Message}", "Scan Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
         FilterModels();

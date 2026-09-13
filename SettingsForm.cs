@@ -1091,7 +1091,7 @@ public class SettingsForm : Form
     {
         var lblTitle = new Label
         {
-            Text = "eLlama v1.1.0",
+            Text = "eLlama v1.1.1",
             Font = new Font(Font.FontFamily, 14, FontStyle.Bold),
             Location = new Point(14, 14),
             AutoSize = true
