@@ -68,8 +68,22 @@ eLlama includes full fine-grained control over inference, memory, and sampling:
 ## Requirements
 
 - **Operating System**: Windows 10 or Windows 11 (x64)
-- **Runtime**: None for Portable standalone build (.NET 10.0 runtime is bundled); or [.NET 10.0](https://dotnet.microsoft.com/download) Windows Desktop Runtime for framework-dependent builds.
-- **Backend**: [`llama.cpp`](https://github.com/ggml-org/llama.cpp/releases) (`llama-cli.exe`) with Vulkan or CPU backend.
+- **Runtime**: None required (bundled runtime in both Installer and Portable distributions); or [.NET 10.0](https://dotnet.microsoft.com/download) Windows Desktop Runtime for source builds.
+- **Backend**: Pre-bundled [`llama.cpp`](https://github.com/ggml-org/llama.cpp/releases) (`llama-cli.exe`) with cross-GPU Vulkan acceleration.
+
+---
+
+## Installation & Downloads
+
+Official releases are distributed in two clean options:
+1. **Windows Installer (`eLlama-Setup-v1.1.0.exe`)**:
+   - Modern, per-user setup (no administrator UAC prompts required).
+   - Installs to `%LocalAppData%\Programs\eLlama`.
+   - Creates Start Menu and Desktop shortcuts.
+   - Includes full uninstaller registered in Windows Settings.
+2. **Portable Edition (`eLlama-Portable-v1.1.0-win-x64.zip`)**:
+   - Zero-installation zip package.
+   - Extract to any folder, external SSD, or USB drive and launch immediately.
 
 ---
 
@@ -81,9 +95,14 @@ cd eLlama
 dotnet build -c Release
 ```
 
-To build a self-contained portable executable:
+To build a self-contained portable release:
 ```bash
 dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o ./PortableRelease
+```
+
+To compile the Windows installer (requires Inno Setup 6):
+```bash
+iscc installer.iss
 ```
 
 ---
@@ -91,4 +110,5 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 ## License
 
 MIT License.
+
 
