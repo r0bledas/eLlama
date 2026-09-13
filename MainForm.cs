@@ -23,6 +23,29 @@ public class MainForm : Form
     private readonly List<ModelInfo> allModels = new();
     private ListViewColumnSorter columnSorter = null!;
 
+    private static readonly string[] BaseColumnHeaders =
+    {
+        "Model Name",
+        "Quant",
+        "Size",
+        "Publisher",
+        "Filename"
+    };
+
+    private void UpdateColumnHeaderIndicators()
+    {
+        string arrow = columnSorter.Order == SortOrder.Ascending ? " ▲" : " ▼";
+        for (int i = 0; i < lvModels.Columns.Count; i++)
+        {
+            if (i < BaseColumnHeaders.Length)
+            {
+                lvModels.Columns[i].Text = (i == columnSorter.SortColumn)
+                    ? BaseColumnHeaders[i] + arrow
+                    : BaseColumnHeaders[i];
+            }
+        }
+    }
+
     public MainForm()
     {
         InitializeComponent();
@@ -138,11 +161,12 @@ public class MainForm : Form
         columnSorter = new ListViewColumnSorter();
         lvModels.ListViewItemSorter = columnSorter;
 
-        lvModels.Columns.Add("Model Name", 280);
-        lvModels.Columns.Add("Quant", 90);
-        lvModels.Columns.Add("Size", 90, HorizontalAlignment.Right);
-        lvModels.Columns.Add("Publisher", 140);
-        lvModels.Columns.Add("Filename", 350);
+        lvModels.Columns.Add(BaseColumnHeaders[0], 280);
+        lvModels.Columns.Add(BaseColumnHeaders[1], 90);
+        lvModels.Columns.Add(BaseColumnHeaders[2], 90, HorizontalAlignment.Right);
+        lvModels.Columns.Add(BaseColumnHeaders[3], 140);
+        lvModels.Columns.Add(BaseColumnHeaders[4], 350);
+        UpdateColumnHeaderIndicators();
 
         lvModels.SelectedIndexChanged += (s, e) => UpdateSelectedButtons();
         lvModels.DoubleClick += (s, e) => RunSelectedModel();
@@ -168,6 +192,7 @@ public class MainForm : Form
                 columnSorter.SortColumn = e.Column;
                 columnSorter.Order = SortOrder.Ascending;
             }
+            UpdateColumnHeaderIndicators();
             lvModels.Sort();
         };
 
@@ -377,6 +402,7 @@ public class MainForm : Form
         }
 
         lvModels.EndUpdate();
+        lvModels.Sort();
 
         lblCount.Text = $"Showing {visibleCount} of {allModels.Count} models ({FormatBytes(visibleBytes)})";
     }
