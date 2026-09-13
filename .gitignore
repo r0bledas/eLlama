@@ -24,3 +24,6 @@ settings.json
 # OS files
 Thumbs.db
 desktop.ini
+
+Release/
+[Rr]elease/

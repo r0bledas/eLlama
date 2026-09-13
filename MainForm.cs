@@ -236,7 +236,7 @@ public class MainForm : Form
 
     private void OpenSettings()
     {
-        using var settingsForm = new SettingsForm(() =>
+        using var settingsForm = new SettingsForm(allModels, () =>
         {
             chkHideProjectors.Checked = AppSettings.Instance.HideProjectors;
             UpdateBackendStatus();

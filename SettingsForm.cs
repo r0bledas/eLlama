@@ -1,3 +1,7 @@
+using System.Diagnostics;
+using System.Text;
+using System.Text.Json;
+
 namespace eLlama;
 
 public class SettingsForm : Form
@@ -6,6 +10,7 @@ public class SettingsForm : Form
     private TextBox txtDirectory = null!;
     private TextBox txtLlamaCli = null!;
     private CheckBox chkHideProjectors = null!;
+    private ComboBox cmbExportFormat = null!;
 
     // Hardware & Compute
     private NumericUpDown numThreads = null!;
@@ -31,10 +36,12 @@ public class SettingsForm : Form
     private NumericUpDown numRepeatLastN = null!;
     private ComboBox cmbMaxTokens = null!;
 
+    private readonly List<ModelInfo> currentModels;
     private readonly Action onSettingsSaved;
 
-    public SettingsForm(Action onSaved)
+    public SettingsForm(List<ModelInfo> models, Action onSaved)
     {
+        currentModels = models ?? new List<ModelInfo>();
         onSettingsSaved = onSaved;
 
         InitializeComponent();
@@ -204,7 +211,55 @@ public class SettingsForm : Form
 
         grpFilter.Controls.Add(chkHideProjectors);
 
-        tab.Controls.AddRange(new Control[] { grpDirectory, grpBackend, grpFilter });
+        // Export Model Library
+        var grpExport = new GroupBox
+        {
+            Text = "Export Model Library",
+            Location = new Point(12, 272),
+            Size = new Size(590, 85)
+        };
+
+        var lblExport = new Label
+        {
+            Text = "Format:",
+            Location = new Point(14, 28),
+            AutoSize = true
+        };
+
+        cmbExportFormat = new ComboBox
+        {
+            Location = new Point(70, 25),
+            Size = new Size(160, 24),
+            DropDownStyle = ComboBoxStyle.DropDownList
+        };
+        cmbExportFormat.Items.AddRange(new object[]
+        {
+            "CSV (*.csv)",
+            "JSON (*.json)",
+            "Markdown (*.md)",
+            "Plain Text (*.txt)"
+        });
+        cmbExportFormat.SelectedIndex = 0;
+
+        var btnExport = new Button
+        {
+            Text = "Export Model List...",
+            Location = new Point(245, 23),
+            Size = new Size(150, 28)
+        };
+        btnExport.Click += (s, e) => ExportModels();
+
+        var lblExportHint = new Label
+        {
+            Text = "Export your full local model catalog in CSV, JSON, Markdown, or Plain Text format.",
+            Location = new Point(14, 58),
+            AutoSize = true,
+            ForeColor = SystemColors.GrayText
+        };
+
+        grpExport.Controls.AddRange(new Control[] { lblExport, cmbExportFormat, btnExport, lblExportHint });
+
+        tab.Controls.AddRange(new Control[] { grpDirectory, grpBackend, grpFilter, grpExport });
     }
 
     private void BuildAdvancedTab(TabPage tab)
@@ -637,5 +692,216 @@ public class SettingsForm : Form
         s.Save();
         onSettingsSaved?.Invoke();
         Close();
+    }
+
+    private void ExportModels()
+    {
+        var models = GetModelsForExport();
+        if (models.Count == 0)
+        {
+            MessageBox.Show(
+                "No models found to export.\n\nPlease ensure your models directory is set correctly and contains .gguf files.",
+                "Export Models",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information
+            );
+            return;
+        }
+
+        int formatIndex = cmbExportFormat.SelectedIndex;
+        if (formatIndex < 0) formatIndex = 0;
+
+        using var sfd = new SaveFileDialog
+        {
+            Title = "Export Model List",
+            Filter = "CSV Document (*.csv)|*.csv|JSON Document (*.json)|*.json|Markdown Document (*.md)|*.md|Text Document (*.txt)|*.txt",
+            FilterIndex = formatIndex + 1,
+            FileName = $"eLlama_models_{DateTime.Now:yyyyMMdd_HHmmss}"
+        };
+
+        if (sfd.ShowDialog(this) != DialogResult.OK) return;
+
+        string ext = Path.GetExtension(sfd.FileName).ToLowerInvariant();
+        int effectiveFormat = ext switch
+        {
+            ".csv" => 0,
+            ".json" => 1,
+            ".md" => 2,
+            ".txt" => 3,
+            _ => sfd.FilterIndex - 1
+        };
+
+        try
+        {
+            string content = effectiveFormat switch
+            {
+                0 => GenerateCsv(models),
+                1 => GenerateJson(models),
+                2 => GenerateMarkdown(models),
+                _ => GeneratePlainText(models)
+            };
+
+            File.WriteAllText(sfd.FileName, content, Encoding.UTF8);
+
+            var res = MessageBox.Show(
+                $"Successfully exported {models.Count} models to:\n{sfd.FileName}\n\nWould you like to open the export file?",
+                "Export Complete",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Information
+            );
+            if (res == DialogResult.Yes)
+            {
+                Process.Start("explorer.exe", $"/select,\"{sfd.FileName}\"");
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Failed to export model list:\n{ex.Message}",
+                "Export Error",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error
+            );
+        }
+    }
+
+    private List<ModelInfo> GetModelsForExport()
+    {
+        if (currentModels != null && currentModels.Count > 0)
+            return currentModels;
+
+        var list = new List<ModelInfo>();
+        string dir = txtDirectory.Text.Trim();
+        if (Directory.Exists(dir))
+        {
+            foreach (var file in Directory.GetFiles(dir, "*.gguf", SearchOption.AllDirectories))
+            {
+                var fi = new FileInfo(file);
+                list.Add(new ModelInfo
+                {
+                    FilePath = fi.FullName,
+                    FileName = fi.Name,
+                    ModelName = Path.GetFileNameWithoutExtension(fi.Name),
+                    Publisher = "Local",
+                    Quant = "Unknown",
+                    SizeBytes = fi.Length,
+                    IsProjector = fi.Name.StartsWith("mmproj", StringComparison.OrdinalIgnoreCase)
+                });
+            }
+        }
+        return list;
+    }
+
+    private static string GenerateCsv(List<ModelInfo> models)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Model Name,Quantization,Size,Bytes,Publisher,Filename,File Path,Is Projector");
+
+        foreach (var m in models)
+        {
+            sb.AppendLine($"\"{EscapeCsv(m.ModelName)}\",\"{EscapeCsv(m.Quant)}\",\"{FormatBytes(m.SizeBytes)}\",{m.SizeBytes},\"{EscapeCsv(m.Publisher)}\",\"{EscapeCsv(m.FileName)}\",\"{EscapeCsv(m.FilePath)}\",{(m.IsProjector ? "Yes" : "No")}");
+        }
+
+        return sb.ToString();
+    }
+
+    private static string GenerateJson(List<ModelInfo> models)
+    {
+        var list = models.Select(m => new
+        {
+            model_name = m.ModelName,
+            quantization = m.Quant,
+            size_formatted = FormatBytes(m.SizeBytes),
+            size_bytes = m.SizeBytes,
+            publisher = m.Publisher,
+            filename = m.FileName,
+            file_path = m.FilePath,
+            is_projector = m.IsProjector
+        });
+
+        return JsonSerializer.Serialize(list, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private static string GenerateMarkdown(List<ModelInfo> models)
+    {
+        var sb = new StringBuilder();
+        long totalBytes = models.Sum(m => m.SizeBytes);
+
+        sb.AppendLine("# eLlama Model Library Export");
+        sb.AppendLine();
+        sb.AppendLine($"- **Export Date**: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        sb.AppendLine($"- **Total Models**: {models.Count}");
+        sb.AppendLine($"- **Total Storage**: {FormatBytes(totalBytes)}");
+        sb.AppendLine();
+        sb.AppendLine("## Models Overview");
+        sb.AppendLine();
+        sb.AppendLine("| Model Name | Quant | Size | Publisher | Filename |");
+        sb.AppendLine("| :--- | :--- | :---: | :--- | :--- |");
+
+        foreach (var m in models)
+        {
+            string name = m.ModelName.Replace("|", "\\|");
+            string quant = m.Quant.Replace("|", "\\|");
+            string size = FormatBytes(m.SizeBytes);
+            string pub = m.Publisher.Replace("|", "\\|");
+            string file = m.FileName.Replace("|", "\\|");
+            sb.AppendLine($"| {name} | {quant} | {size} | {pub} | `{file}` |");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("## File Paths");
+        sb.AppendLine();
+        for (int i = 0; i < models.Count; i++)
+        {
+            sb.AppendLine($"{i + 1}. `{models[i].FilePath}`");
+        }
+
+        return sb.ToString();
+    }
+
+    private static string GeneratePlainText(List<ModelInfo> models)
+    {
+        var sb = new StringBuilder();
+        long totalBytes = models.Sum(m => m.SizeBytes);
+
+        sb.AppendLine("================================================================================");
+        sb.AppendLine("eLlama Model Library Export");
+        sb.AppendLine($"Date:         {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        sb.AppendLine($"Total Models: {models.Count}");
+        sb.AppendLine($"Total Size:   {FormatBytes(totalBytes)}");
+        sb.AppendLine("================================================================================");
+        sb.AppendLine();
+
+        for (int i = 0; i < models.Count; i++)
+        {
+            var m = models[i];
+            sb.AppendLine($"[{i + 1}] {m.ModelName}");
+            sb.AppendLine($"    Quantization: {m.Quant}");
+            sb.AppendLine($"    Size:         {FormatBytes(m.SizeBytes)} ({m.SizeBytes:N0} bytes)");
+            sb.AppendLine($"    Publisher:    {m.Publisher}");
+            sb.AppendLine($"    Filename:     {m.FileName}");
+            sb.AppendLine($"    Path:         {m.FilePath}");
+            if (m.IsProjector)
+            {
+                sb.AppendLine("    Type:         Vision Projector");
+            }
+            sb.AppendLine(new string('-', 80));
+        }
+
+        return sb.ToString();
+    }
+
+    private static string EscapeCsv(string text)
+    {
+        return text?.Replace("\"", "\"\"") ?? "";
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes >= 1024L * 1024L * 1024L)
+            return (bytes / (1024.0 * 1024.0 * 1024.0)).ToString("F2") + " GB";
+        if (bytes >= 1024L * 1024L)
+            return (bytes / (1024.0 * 1024.0)).ToString("F2") + " MB";
+        return (bytes / 1024.0).ToString("F2") + " KB";
     }
 }
