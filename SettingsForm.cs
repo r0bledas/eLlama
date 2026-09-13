@@ -69,12 +69,15 @@ public class SettingsForm : Form
 
         var tabGeneral = new TabPage("General");
         var tabAdvanced = new TabPage("Advanced Inference");
+        var tabAbout = new TabPage("About & Credits");
 
         BuildGeneralTab(tabGeneral);
         BuildAdvancedTab(tabAdvanced);
+        BuildAboutTab(tabAbout);
 
         tabControl.TabPages.Add(tabGeneral);
         tabControl.TabPages.Add(tabAdvanced);
+        tabControl.TabPages.Add(tabAbout);
 
         // Bottom Controls
         var btnReset = new Button
@@ -1083,4 +1086,168 @@ public class SettingsForm : Form
             return (bytes / (1024.0 * 1024.0)).ToString("F2") + " MB";
         return (bytes / 1024.0).ToString("F2") + " KB";
     }
+
+    private void BuildAboutTab(TabPage tab)
+    {
+        var lblTitle = new Label
+        {
+            Text = "eLlama v1.1.0",
+            Font = new Font(Font.FontFamily, 14, FontStyle.Bold),
+            Location = new Point(14, 14),
+            AutoSize = true
+        };
+
+        var lblSubtitle = new Label
+        {
+            Text = "Native Windows Desktop Manager & Runner for Local GGUF LLMs\nCopyright © 2026 Raudel. Licensed under the MIT License.",
+            Location = new Point(16, 44),
+            AutoSize = true,
+            ForeColor = SystemColors.GrayText
+        };
+
+        var grpCredits = new GroupBox
+        {
+            Text = "Core Technologies & Acknowledgements",
+            Location = new Point(12, 85),
+            Size = new Size(590, 115)
+        };
+
+        var lblLlamaCred = new Label
+        {
+            Text = "• llama.cpp: Developed by Georgi Gerganov & the llama.cpp community (MIT License)\n  High-performance C++ LLM inference engine powering local models.",
+            Location = new Point(14, 22),
+            Size = new Size(470, 32)
+        };
+
+        var btnLlamaLink = new Button
+        {
+            Text = "GitHub",
+            Location = new Point(495, 20),
+            Size = new Size(80, 25)
+        };
+        btnLlamaLink.Click += (s, e) =>
+        {
+            try { Process.Start(new ProcessStartInfo("https://github.com/ggml-org/llama.cpp") { UseShellExecute = true }); } catch { }
+        };
+
+        var lblOtherCreds = new Label
+        {
+            Text = "• Vulkan: Cross-vendor GPU compute & acceleration by The Khronos Group Inc.\n• LLVM OpenMP: High-performance parallel multi-threading runtime (Apache 2.0 / LLVM)\n• Microsoft .NET 10: Desktop runtime and Windows Forms application platform (MIT License)",
+            Location = new Point(14, 58),
+            Size = new Size(560, 48)
+        };
+
+        grpCredits.Controls.AddRange(new Control[] { lblLlamaCred, btnLlamaLink, lblOtherCreds });
+
+        var grpLicenses = new GroupBox
+        {
+            Text = "Third-Party Legal Notices & Licenses",
+            Location = new Point(12, 210),
+            Size = new Size(590, 255)
+        };
+
+        var txtLicenses = new TextBox
+        {
+            Multiline = true,
+            ReadOnly = true,
+            ScrollBars = ScrollBars.Vertical,
+            Location = new Point(14, 22),
+            Size = new Size(560, 190),
+            Font = new Font("Consolas", 8.25f),
+            BackColor = Color.FromArgb(250, 250, 250),
+            Text = GetThirdPartyNoticesText()
+        };
+
+        var btnOpenNoticeFile = new Button
+        {
+            Text = "Open License File",
+            Location = new Point(14, 220),
+            Size = new Size(130, 26)
+        };
+        btnOpenNoticeFile.Click += (s, e) =>
+        {
+            string noticeFile = Path.Combine(AppSettings.AppDir, "THIRD-PARTY-NOTICES.md");
+            if (!File.Exists(noticeFile))
+            {
+                noticeFile = Path.Combine(AppSettings.AppDir, "LICENSE");
+            }
+            if (File.Exists(noticeFile))
+            {
+                try { Process.Start(new ProcessStartInfo(noticeFile) { UseShellExecute = true }); } catch { }
+            }
+            else
+            {
+                MessageBox.Show("License file not found on disk.", "License Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        };
+
+        var btnViewRepo = new Button
+        {
+            Text = "eLlama GitHub Repository",
+            Location = new Point(152, 220),
+            Size = new Size(170, 26)
+        };
+        btnViewRepo.Click += (s, e) =>
+        {
+            try { Process.Start(new ProcessStartInfo("https://github.com/r0bledas/eLlama") { UseShellExecute = true }); } catch { }
+        };
+
+        grpLicenses.Controls.AddRange(new Control[] { txtLicenses, btnOpenNoticeFile, btnViewRepo });
+
+        tab.Controls.AddRange(new Control[] { lblTitle, lblSubtitle, grpCredits, grpLicenses });
+    }
+
+    private static string GetThirdPartyNoticesText()
+    {
+        return @"eLlama Third-Party Notices and Open-Source Licenses:
+
+================================================================================
+1. llama.cpp
+Copyright (c) 2023-2025 Georgi Gerganov and llama.cpp contributors
+License: MIT License
+URL: https://github.com/ggml-org/llama.cpp
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the ""Software""), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED ""AS IS"", WITHOUT WARRANTY OF ANY KIND.
+
+================================================================================
+2. ggml
+Copyright (c) 2022-2025 Georgi Gerganov and ggml contributors
+License: MIT License
+URL: https://github.com/ggml-org/ggml
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the ""Software""), to deal
+in the Software without restriction.
+
+================================================================================
+3. LLVM OpenMP (libomp.dll)
+Copyright (c) 1997-2025 LLVM Release Engineering
+License: Apache License v2.0 with LLVM Exceptions
+URL: https://openmp.llvm.org/
+
+Licensed under the Apache License, Version 2.0.
+
+================================================================================
+4. Vulkan (ggml-vulkan.dll)
+Copyright (c) 2015-2025 The Khronos Group Inc.
+License: Apache License v2.0 / MIT
+URL: https://www.vulkan.org/
+
+================================================================================
+5. Microsoft .NET 10 Runtime & Windows Forms
+Copyright (c) .NET Foundation and Contributors
+License: MIT License
+URL: https://github.com/dotnet/runtime";
+    }
 }
+

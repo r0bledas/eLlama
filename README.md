@@ -107,8 +107,21 @@ iscc installer.iss
 
 ---
 
-## License
+## Credits & Acknowledgements
 
-MIT License.
+eLlama is built on the shoulders of giants in the open-source and local AI community. Special thanks and attribution to:
+
+- **[Georgi Gerganov](https://github.com/ggerganov) & the [llama.cpp community](https://github.com/ggml-org/llama.cpp)**: For developing the incredible `llama.cpp` and `ggml` engines that power high-performance local LLM inference across millions of devices.
+- **[The Khronos Group Inc.](https://www.vulkan.org/)**: For the cross-platform Vulkan API enabling vendor-neutral GPU acceleration.
+- **[The LLVM Project](https://llvm.org/)**: For the high-performance OpenMP multi-threading runtime.
+- **[.NET Foundation & Microsoft](https://dotnet.microsoft.com/)**: For the .NET 10 desktop runtime and Windows Forms application platform.
+
+---
+
+## License & Legal Notices
+
+- **eLlama**: Licensed under the [MIT License](LICENSE). Copyright (c) 2026 Raudel.
+- **Third-Party Components & Dependencies**: All bundled or interfaced third-party tools (including `llama.cpp`, `ggml`, `libomp.dll`, and Vulkan) are distributed under their respective open-source licenses. For complete copyright notices and license texts, see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
 
 

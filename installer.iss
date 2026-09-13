@@ -1,4 +1,4 @@
-﻿; Inno Setup Script for eLlama
+; Inno Setup Script for eLlama
 #define MyAppName "eLlama"
 #define MyAppVersion "1.1.0"
 #define MyAppPublisher "Raudel"
@@ -25,6 +25,7 @@ WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 UninstallDisplayIcon={app}\{#MyAppExeName}
+LicenseFile=LICENSE
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
