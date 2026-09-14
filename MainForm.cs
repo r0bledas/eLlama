@@ -19,6 +19,8 @@ public class MainForm : Form
     private ToolStripStatusLabel lblBackendStatus = null!;
     private Button btnSettings = null!;
     private ToolStripControlHost hostSettings = null!;
+    private NotifyIcon notifyIcon = null!;
+    private bool isExiting = false;
 
     private readonly List<ModelInfo> allModels = new();
     private ListViewColumnSorter columnSorter = null!;
@@ -107,7 +109,15 @@ public class MainForm : Form
 
         try
         {
-            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
+            string localIcon = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icon.ico");
+            if (File.Exists(localIcon))
+            {
+                Icon = new Icon(localIcon);
+            }
+            else
+            {
+                Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
+            }
         }
         catch
         {
@@ -301,6 +311,29 @@ public class MainForm : Form
         Controls.Add(lvModels);
         Controls.Add(topPanel);
         Controls.Add(statusStrip);
+
+        // System Tray NotifyIcon
+        var trayContextMenu = new ContextMenuStrip();
+        var menuOpen = new ToolStripMenuItem("Open eLlama", null, (s, e) => RestoreFromTray())
+        {
+            Font = new Font(Font, FontStyle.Bold)
+        };
+        var menuExit = new ToolStripMenuItem("Exit", null, (s, e) => ExitApplication());
+        trayContextMenu.Items.AddRange(new ToolStripItem[]
+        {
+            menuOpen,
+            new ToolStripSeparator(),
+            menuExit
+        });
+
+        notifyIcon = new NotifyIcon
+        {
+            Icon = Icon,
+            Text = "eLlama",
+            ContextMenuStrip = trayContextMenu,
+            Visible = AppSettings.Instance.CloseToTray
+        };
+        notifyIcon.DoubleClick += (s, e) => RestoreFromTray();
     }
 
     public async Task PerformLlamaUpdateAsync(string? downloadUrl = null, string? tagName = null)
@@ -350,6 +383,7 @@ public class MainForm : Form
             chkHideProjectors.Checked = AppSettings.Instance.HideProjectors;
             UpdateBackendStatus();
             LoadModels();
+            UpdateTrayIconVisibility();
         });
         settingsForm.ShowDialog(this);
     }
@@ -357,6 +391,47 @@ public class MainForm : Form
     public void OpenSettingsToUpdates()
     {
         OpenSettings();
+    }
+
+    private void UpdateTrayIconVisibility()
+    {
+        notifyIcon.Visible = AppSettings.Instance.CloseToTray;
+    }
+
+    private void RestoreFromTray()
+    {
+        Show();
+        if (WindowState == FormWindowState.Minimized)
+        {
+            WindowState = FormWindowState.Normal;
+        }
+        BringToFront();
+        Activate();
+        UpdateTrayIconVisibility();
+    }
+
+    private void ExitApplication()
+    {
+        isExiting = true;
+        notifyIcon.Visible = false;
+        notifyIcon.Dispose();
+        Application.Exit();
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (e.CloseReason == CloseReason.UserClosing && AppSettings.Instance.CloseToTray && !isExiting)
+        {
+            e.Cancel = true;
+            Hide();
+            notifyIcon.Visible = true;
+            notifyIcon.ShowBalloonTip(1500, "eLlama", "eLlama is running in the system tray.", ToolTipIcon.Info);
+            return;
+        }
+
+        notifyIcon.Visible = false;
+        notifyIcon.Dispose();
+        base.OnFormClosing(e);
     }
 
     private void UpdateBackendStatus()

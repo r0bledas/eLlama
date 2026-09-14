@@ -11,6 +11,7 @@ public class SettingsForm : Form
     private TextBox txtDirectory = null!;
     private TextBox txtLlamaCli = null!;
     private CheckBox chkHideProjectors = null!;
+    private CheckBox chkCloseToTray = null!;
     private ComboBox cmbExportFormat = null!;
     private Button btnUpdateELlama = null!;
     private Button btnUpdateLlamaCpp = null!;
@@ -206,22 +207,29 @@ public class SettingsForm : Form
 
         grpBackend.Controls.AddRange(new Control[] { lblLlama, txtLlamaCli, btnBrowseLlama });
 
-        // Display Preferences
+        // Display & System Preferences
         var grpFilter = new GroupBox
         {
-            Text = "Display & Filtering",
+            Text = "Preferences",
             Location = new Point(12, 184),
             Size = new Size(590, 60)
         };
 
         chkHideProjectors = new CheckBox
         {
-            Text = "Hide Vision Projectors (mmproj files) by default",
+            Text = "Hide Vision Projectors (mmproj files)",
             Location = new Point(14, 24),
             AutoSize = true
         };
 
-        grpFilter.Controls.Add(chkHideProjectors);
+        chkCloseToTray = new CheckBox
+        {
+            Text = "Minimize to system tray on close",
+            Location = new Point(310, 24),
+            AutoSize = true
+        };
+
+        grpFilter.Controls.AddRange(new Control[] { chkHideProjectors, chkCloseToTray });
 
         // Export Model Library
         var grpExport = new GroupBox
@@ -686,6 +694,7 @@ public class SettingsForm : Form
         txtDirectory.Text = s.ModelsDirectory;
         txtLlamaCli.Text = s.LlamaCliPath;
         chkHideProjectors.Checked = s.HideProjectors;
+        chkCloseToTray.Checked = s.CloseToTray;
         chkCheckELlamaUpdates.Checked = s.CheckForELlamaUpdates;
         chkCheckLlamaUpdates.Checked = s.CheckForLlamaCppUpdates;
 
@@ -783,6 +792,7 @@ public class SettingsForm : Form
         numRepeatPenalty.Value = 1.10m;
         numRepeatLastN.Value = 64;
         cmbMaxTokens.SelectedIndex = 0;
+        chkCloseToTray.Checked = false;
         chkCheckELlamaUpdates.Checked = true;
         chkCheckLlamaUpdates.Checked = true;
     }
@@ -804,6 +814,7 @@ public class SettingsForm : Form
         }
 
         s.HideProjectors = chkHideProjectors.Checked;
+        s.CloseToTray = chkCloseToTray.Checked;
         s.CheckForELlamaUpdates = chkCheckELlamaUpdates.Checked;
         s.CheckForLlamaCppUpdates = chkCheckLlamaUpdates.Checked;
 

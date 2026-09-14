@@ -9,7 +9,7 @@ public record UpdateResult(bool HasUpdate, string CurrentVersion, string LatestV
 
 public static class UpdateManager
 {
-    public const string CurrentELlamaVersion = "1.1.3";
+    public const string CurrentELlamaVersion = "1.1.4";
 
     public static async Task<UpdateResult> CheckELlamaAsync()
     {

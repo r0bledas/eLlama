@@ -14,6 +14,7 @@ public class AppSettings
     public string ModelsDirectory { get; set; } = GetDefaultModelsDirectory();
     public string LlamaCliPath { get; set; } = GetDefaultLlamaCliPath();
     public bool HideProjectors { get; set; } = true;
+    public bool CloseToTray { get; set; } = false;
 
     [JsonIgnore]
     public string ResolvedModelsDirectory => ResolvePath(ModelsDirectory);
