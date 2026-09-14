@@ -327,23 +327,20 @@ public class SettingsForm : Form
 
                     if (prompt == DialogResult.Yes)
                     {
-                        if (!string.IsNullOrEmpty(res.AssetDownloadUrl))
-                        {
-                            await UpdateManager.DownloadAndRunELlamaInstallerAsync(
-                                this,
-                                res.AssetDownloadUrl,
-                                res.LatestVersion,
-                                status =>
-                                {
-                                    if (InvokeRequired) BeginInvoke(() => btnUpdateELlama.Text = status);
-                                    else btnUpdateELlama.Text = status;
-                                }
-                            );
-                        }
-                        else
-                        {
-                            try { Process.Start(new ProcessStartInfo(res.ReleaseUrl) { UseShellExecute = true }); } catch { }
-                        }
+                        string downloadUrl = !string.IsNullOrEmpty(res.AssetDownloadUrl)
+                            ? res.AssetDownloadUrl
+                            : $"https://github.com/r0bledas/eLlama/releases/download/{res.LatestVersion}/eLlama-Setup-{res.LatestVersion}.exe";
+
+                        await UpdateManager.DownloadAndRunELlamaInstallerAsync(
+                            this,
+                            downloadUrl,
+                            res.LatestVersion,
+                            status =>
+                            {
+                                if (InvokeRequired) BeginInvoke(() => btnUpdateELlama.Text = status);
+                                else btnUpdateELlama.Text = status;
+                            }
+                        );
                     }
                 }
                 else

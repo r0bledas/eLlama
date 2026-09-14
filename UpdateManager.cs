@@ -9,7 +9,7 @@ public record UpdateResult(bool HasUpdate, string CurrentVersion, string LatestV
 
 public static class UpdateManager
 {
-    public const string CurrentELlamaVersion = "1.1.4";
+    public const string CurrentELlamaVersion = "1.1.5";
 
     public static async Task<UpdateResult> CheckELlamaAsync()
     {
@@ -43,6 +43,23 @@ public static class UpdateManager
                         break;
                     }
                 }
+                if (string.IsNullOrEmpty(setupUrl))
+                {
+                    foreach (var asset in assets.EnumerateArray())
+                    {
+                        string name = asset.GetProperty("name").GetString() ?? "";
+                        if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                        {
+                            setupUrl = asset.GetProperty("browser_download_url").GetString();
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (string.IsNullOrEmpty(setupUrl) && !string.IsNullOrEmpty(tagName))
+            {
+                setupUrl = $"https://github.com/r0bledas/eLlama/releases/download/{tagName}/eLlama-Setup-{tagName}.exe";
             }
 
             string cleanLatest = tagName.TrimStart('v', 'V');
@@ -188,11 +205,11 @@ public static class UpdateManager
             var eLlamaRes = await CheckELlamaAsync();
             if (eLlamaRes.HasUpdate && parent.IsHandleCreated)
             {
-                parent.BeginInvoke(() =>
+                parent.BeginInvoke(async () =>
                 {
                     var prompt = MessageBox.Show(
                         parent,
-                        $"A new version of eLlama is available!\n\nCurrent version: {eLlamaRes.CurrentVersion}\nLatest release: {eLlamaRes.LatestVersion}\n\nWould you like to open the GitHub releases page to download the update?",
+                        $"A new version of eLlama is available!\n\nCurrent version: {eLlamaRes.CurrentVersion}\nLatest version: {eLlamaRes.LatestVersion}\n\nWould you like to download and install this update now?",
                         "eLlama Update Available",
                         MessageBoxButtons.YesNo,
                         MessageBoxIcon.Information
@@ -200,7 +217,15 @@ public static class UpdateManager
 
                     if (prompt == DialogResult.Yes)
                     {
-                        try { Process.Start(new ProcessStartInfo(eLlamaRes.ReleaseUrl) { UseShellExecute = true }); } catch { }
+                        string downloadUrl = !string.IsNullOrEmpty(eLlamaRes.AssetDownloadUrl)
+                            ? eLlamaRes.AssetDownloadUrl
+                            : $"https://github.com/r0bledas/eLlama/releases/download/{eLlamaRes.LatestVersion}/eLlama-Setup-{eLlamaRes.LatestVersion}.exe";
+
+                        await DownloadAndRunELlamaInstallerAsync(
+                            parent,
+                            downloadUrl,
+                            eLlamaRes.LatestVersion
+                        );
                     }
                 });
             }
@@ -247,28 +272,36 @@ public static class UpdateManager
         {
             var msg = MessageBox.Show(
                 parent,
-                $"Updates are available for both eLlama and llama.cpp!\n\n• eLlama: {eRes.CurrentVersion} -> {eRes.LatestVersion}\n• llama.cpp: {lRes.CurrentVersion} -> {lRes.LatestVersion}\n\nWould you like to open the eLlama releases page?",
+                $"Updates are available for both eLlama and llama.cpp!\n\n• eLlama: {eRes.CurrentVersion} -> {eRes.LatestVersion}\n• llama.cpp: {lRes.CurrentVersion} -> {lRes.LatestVersion}\n\nWould you like to download and install the eLlama update now?",
                 "Updates Available",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Information
             );
             if (msg == DialogResult.Yes)
             {
-                try { Process.Start(new ProcessStartInfo(eRes.ReleaseUrl) { UseShellExecute = true }); } catch { }
+                string downloadUrl = !string.IsNullOrEmpty(eRes.AssetDownloadUrl)
+                    ? eRes.AssetDownloadUrl
+                    : $"https://github.com/r0bledas/eLlama/releases/download/{eRes.LatestVersion}/eLlama-Setup-{eRes.LatestVersion}.exe";
+
+                _ = DownloadAndRunELlamaInstallerAsync(parent, downloadUrl, eRes.LatestVersion);
             }
         }
         else if (eRes.HasUpdate)
         {
             var msg = MessageBox.Show(
                 parent,
-                $"A new version of eLlama is available!\n\nCurrent version: {eRes.CurrentVersion}\nLatest version:  {eRes.LatestVersion}\n\nWould you like to open the GitHub releases page to download it?",
+                $"A new version of eLlama is available!\n\nCurrent version: {eRes.CurrentVersion}\nLatest version:  {eRes.LatestVersion}\n\nWould you like to download and install this update now?",
                 "eLlama Update Available",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Information
             );
             if (msg == DialogResult.Yes)
             {
-                try { Process.Start(new ProcessStartInfo(eRes.ReleaseUrl) { UseShellExecute = true }); } catch { }
+                string downloadUrl = !string.IsNullOrEmpty(eRes.AssetDownloadUrl)
+                    ? eRes.AssetDownloadUrl
+                    : $"https://github.com/r0bledas/eLlama/releases/download/{eRes.LatestVersion}/eLlama-Setup-{eRes.LatestVersion}.exe";
+
+                _ = DownloadAndRunELlamaInstallerAsync(parent, downloadUrl, eRes.LatestVersion);
             }
         }
         else if (lRes.HasUpdate)
@@ -441,60 +474,84 @@ public static class UpdateManager
         try
         {
             statusCallback?.Invoke("Downloading 0%...");
-            using var http = new HttpClient();
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("eLlama-Updater");
+            bool downloaded = false;
 
-            using (var response = await http.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead))
+            // Attempt 1: Native streaming via HttpClient with auto-redirects
+            try
             {
-                response.EnsureSuccessStatusCode();
-                long? totalBytes = response.Content.Headers.ContentLength;
+                using var handler = new HttpClientHandler { AllowAutoRedirect = true };
+                using var http = new HttpClient(handler);
+                http.DefaultRequestHeaders.UserAgent.ParseAdd("eLlama-Updater");
 
-                using var stream = await response.Content.ReadAsStreamAsync();
-                using var fileStream = new FileStream(tempInstaller, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
-
-                var buffer = new byte[81920];
-                long totalRead = 0;
-                int read;
-                DateTime lastUpdate = DateTime.Now;
-
-                while ((read = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                using var response = await http.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
+                if (response.IsSuccessStatusCode)
                 {
-                    await fileStream.WriteAsync(buffer, 0, read);
-                    totalRead += read;
+                    long? totalBytes = response.Content.Headers.ContentLength;
 
-                    if ((DateTime.Now - lastUpdate).TotalMilliseconds > 200)
+                    using var stream = await response.Content.ReadAsStreamAsync();
+                    using var fileStream = new FileStream(tempInstaller, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
+
+                    var buffer = new byte[81920];
+                    long totalRead = 0;
+                    int read;
+                    DateTime lastUpdate = DateTime.Now;
+
+                    while ((read = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
                     {
-                        lastUpdate = DateTime.Now;
-                        if (totalBytes.HasValue && totalBytes.Value > 0)
+                        await fileStream.WriteAsync(buffer, 0, read);
+                        totalRead += read;
+
+                        if ((DateTime.Now - lastUpdate).TotalMilliseconds > 200)
                         {
-                            int pct = (int)((totalRead * 100) / totalBytes.Value);
-                            statusCallback?.Invoke($"Downloading {pct}%...");
-                        }
-                        else
-                        {
-                            statusCallback?.Invoke($"Downloading {totalRead / (1024 * 1024)} MB...");
+                            lastUpdate = DateTime.Now;
+                            if (totalBytes.HasValue && totalBytes.Value > 0)
+                            {
+                                int pct = (int)((totalRead * 100) / totalBytes.Value);
+                                statusCallback?.Invoke($"Downloading {pct}%...");
+                            }
+                            else
+                            {
+                                statusCallback?.Invoke($"Downloading {totalRead / (1024 * 1024)} MB...");
+                            }
                         }
                     }
+
+                    downloaded = File.Exists(tempInstaller) && new FileInfo(tempInstaller).Length > 1024 * 1024;
+                }
+            }
+            catch
+            {
+                downloaded = false;
+            }
+
+            // Attempt 2: Fallback to curl.exe if HttpClient had network/redirect issues
+            if (!downloaded)
+            {
+                statusCallback?.Invoke("Downloading via curl...");
+                var curlPsi = new ProcessStartInfo
+                {
+                    FileName = "curl.exe",
+                    Arguments = $"-L -s -o \"{tempInstaller}\" \"{downloadUrl}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using var curlProc = Process.Start(curlPsi);
+                if (curlProc != null)
+                {
+                    await curlProc.WaitForExitAsync();
+                    downloaded = File.Exists(tempInstaller) && new FileInfo(tempInstaller).Length > 1024 * 1024;
                 }
             }
 
-            statusCallback?.Invoke("Ready to Install");
-
-            var confirm = MessageBox.Show(
-                parent,
-                $"Download of eLlama {targetVersion} completed successfully!\n\nClick OK to close eLlama and run the installer. The installer file will be cleaned up automatically after installation.",
-                "eLlama Update Ready",
-                MessageBoxButtons.OKCancel,
-                MessageBoxIcon.Information
-            );
-
-            if (confirm != DialogResult.OK)
+            if (!downloaded)
             {
-                try { File.Delete(tempInstaller); } catch { }
-                return;
+                throw new Exception("Unable to download the installer from the release server.");
             }
 
-            // Launch installer with self-cleaning command
+            statusCallback?.Invoke("Launching installer...");
+            await Task.Delay(500);
+
+            // Launch installer with self-cleaning command and exit eLlama
             var psi = new ProcessStartInfo
             {
                 FileName = "cmd.exe",

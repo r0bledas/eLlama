@@ -1,6 +1,19 @@
-# eLlama
+<p align="center">
+  <img src="icon.png" alt="eLlama Logo" width="128" height="128" />
+</p>
 
-**eLlama** is a fast, native Windows desktop manager and launcher for local GGUF large language models, powered directly by [`llama.cpp`](https://github.com/ggml-org/llama.cpp).
+<h1 align="center">eLlama</h1>
+
+<p align="center">
+  <strong>Fast, native Windows desktop manager & launcher for local GGUF models</strong><br>
+  <em>Powered directly by llama.cpp with cross-GPU Vulkan acceleration</em>
+</p>
+
+<p align="center">
+  <a href="https://github.com/r0bledas/eLlama/releases/latest"><img src="https://img.shields.io/github/v/release/r0bledas/eLlama?style=flat-square&color=38bdf8" alt="Latest Release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="License: MIT" /></a>
+  <img src="https://img.shields.io/badge/Platform-Windows%20x64-0078D6?style=flat-square&logo=windows" alt="Platform" />
+</p>
 
 Unlike traditional local runners that duplicate model weights into internal blob layers and eat gigabytes of disk space, eLlama executes `.gguf` files directly in place with **zero file copying**, **zero background daemons**, and **zero overhead**.
 
@@ -76,12 +89,13 @@ eLlama includes full fine-grained control over inference, memory, and sampling:
 ## Installation & Downloads
 
 Official releases are distributed in two clean options:
-1. **Windows Installer (`eLlama-Setup-vX.X.X.exe`)**:
+1. **Windows Installer ([`eLlama-Setup-v1.1.5.exe`](https://github.com/r0bledas/eLlama/releases/latest))**:
    - Modern, per-user setup (no administrator UAC prompts required).
    - Installs to `%LocalAppData%\Programs\eLlama`.
-   - Creates Start Menu and Desktop shortcuts.
+   - Creates Start Menu and Desktop shortcuts with custom application icon.
    - Includes full uninstaller registered in Windows Settings.
-2. **Portable Edition (`eLlama-Portable-v1.1.1-win-x64.zip`)**:
+   - Seamlessly preserves user preferences and custom model directories across upgrades.
+2. **Portable Edition ([`eLlama-Portable-v1.1.5-win-x64.zip`](https://github.com/r0bledas/eLlama/releases/latest))**:
    - Zero-installation zip package.
    - Extract to any folder, external SSD, or USB drive and launch immediately.
 
