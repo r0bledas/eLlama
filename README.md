@@ -76,7 +76,7 @@ eLlama includes full fine-grained control over inference, memory, and sampling:
 ## Installation & Downloads
 
 Official releases are distributed in two clean options:
-1. **Windows Installer (`eLlama-Setup-v1.1.1.exe`)**:
+1. **Windows Installer (`eLlama-Setup-vX.X.X.exe`)**:
    - Modern, per-user setup (no administrator UAC prompts required).
    - Installs to `%LocalAppData%\Programs\eLlama`.
    - Creates Start Menu and Desktop shortcuts.
