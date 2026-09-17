@@ -35,11 +35,11 @@ cp "$BIN_PATH" "$OUTPUT_DIR/$APP_NAME/Contents/MacOS/eLlama"
 chmod +x "$OUTPUT_DIR/$APP_NAME/Contents/MacOS/eLlama"
 
 # Copy Info.plist
-cp "$ROOT_DIR/Sources/eLlama/Resources/Info.plist" "$OUTPUT_DIR/$APP_NAME/Contents/Info.plist"
+cp "$ROOT_DIR/Resources/Info.plist" "$OUTPUT_DIR/$APP_NAME/Contents/Info.plist"
 
 # Copy Icon
-if [ -f "$ROOT_DIR/Sources/eLlama/Resources/AppIcon.icns" ]; then
-    cp "$ROOT_DIR/Sources/eLlama/Resources/AppIcon.icns" "$OUTPUT_DIR/$APP_NAME/Contents/Resources/AppIcon.icns"
+if [ -f "$ROOT_DIR/Resources/AppIcon.icns" ]; then
+    cp "$ROOT_DIR/Resources/AppIcon.icns" "$OUTPUT_DIR/$APP_NAME/Contents/Resources/AppIcon.icns"
 fi
 
 # Ad-hoc code signing for local execution
