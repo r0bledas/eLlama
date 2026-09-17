@@ -1,6 +1,6 @@
 ; Inno Setup Script for eLlama
 #define MyAppName "eLlama"
-#define MyAppVersion "1.1.7"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "Raudel"
 #define MyAppURL "https://github.com/r0bledas/eLlama"
 #define MyAppExeName "eLlama.exe"
@@ -18,7 +18,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=Release
-OutputBaseFilename=eLlama-Setup-v1.1.7
+OutputBaseFilename=eLlama-Setup-v1.2.0
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
