@@ -5,14 +5,15 @@
 <h1 align="center">eLlama</h1>
 
 <p align="center">
-  <strong>Fast, native Windows desktop manager & launcher for local GGUF models</strong><br>
-  <em>Powered directly by llama.cpp with cross-GPU Vulkan acceleration</em>
+  <strong>Fast, native desktop manager & launcher for local GGUF models</strong><br>
+  <em>Native Windows (.NET / Vulkan) & Native macOS (SwiftUI / Metal) powered directly by llama.cpp</em>
 </p>
 
 <p align="center">
   <a href="https://github.com/r0bledas/eLlama/releases/latest"><img src="https://img.shields.io/github/v/release/r0bledas/eLlama?style=flat-square&color=38bdf8" alt="Latest Release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="License: MIT" /></a>
-  <img src="https://img.shields.io/badge/Platform-Windows%20x64-0078D6?style=flat-square&logo=windows" alt="Platform" />
+  <img src="https://img.shields.io/badge/Platform-Windows%20x64-0078D6?style=flat-square&logo=windows" alt="Windows" />
+  <img src="https://img.shields.io/badge/Platform-macOS%20(Metal)-000000?style=flat-square&logo=apple" alt="macOS" />
 </p>
 
 Unlike traditional local runners that duplicate model weights into internal blob layers and eat gigabytes of disk space, eLlama executes `.gguf` files directly in place with **zero file copying**, **zero background daemons**, and **zero overhead**.
@@ -118,6 +119,21 @@ To compile the Windows installer (requires Inno Setup 6):
 ```bash
 iscc installer.iss
 ```
+
+### macOS (Native SwiftUI / Swift)
+
+Requires macOS 13.0+ and Xcode 15+ / Swift 5.9+:
+
+```bash
+cd macos
+# Build release binary via Swift Package Manager
+swift build -c release
+
+# Or package complete eLlama.app bundle and .dmg
+./scripts/build_app.sh
+```
+
+See [macos/README.md](macos/README.md) for full macOS details and Xcode configuration.
 
 ---
 
