@@ -1,10 +1,15 @@
-name: Build macOS Prebuilt
+name: Build Prebuilts & Attach to Release
 
 on:
   push:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag to attach to'
+        required: false
+        default: 'v1.2.0'
 
 permissions:
   contents: write
@@ -25,9 +30,37 @@ jobs:
       - name: Upload macOS Prebuilt Binaries to Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ inputs.tag_name || github.ref_name }}
           files: |
             macos/dist/*.zip
             macos/dist/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build Windows Portable
+        shell: pwsh
+        run: |
+          dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o ./PortableRelease
+          Remove-Item "PortableRelease\*.pdb" -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path "Release" -Force
+          Compress-Archive -Path "PortableRelease\*" -DestinationPath "Release\eLlama-Portable-v1.2.0-win-x64.zip" -Force
+
+      - name: Upload Windows Portable to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag_name || github.ref_name }}
+          files: |
+            Release/eLlama-Portable-*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
