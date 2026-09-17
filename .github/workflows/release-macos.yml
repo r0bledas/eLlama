@@ -1,0 +1,33 @@
+name: Build macOS Prebuilt
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Build eLlama SwiftUI App & DMG
+        run: |
+          cd macos
+          chmod +x scripts/build_app.sh
+          ./scripts/build_app.sh
+
+      - name: Upload macOS Prebuilt Binaries to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            macos/dist/*.zip
+            macos/dist/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
