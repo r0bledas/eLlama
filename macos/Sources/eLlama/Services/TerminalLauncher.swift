@@ -6,7 +6,7 @@ public final class TerminalLauncher: Sendable {
 
     public init() {}
 
-    public static func buildLlamaArgs(model: ModelInfo, settings: AppSettings) -> [String] {
+    public static func buildCommonArgs(model: ModelInfo, settings: AppSettings) -> [String] {
         var args: [String] = [
             "-m", "\"\(model.filePath)\"",
             "-t", "\(settings.threads)",
@@ -58,10 +58,39 @@ public final class TerminalLauncher: Sendable {
         return args
     }
 
+    public static func buildLlamaArgs(model: ModelInfo, settings: AppSettings) -> [String] {
+        buildCommonArgs(model: model, settings: settings)
+    }
+
     public static func buildCommandLine(model: ModelInfo, settings: AppSettings) -> String {
         let cliPath = settings.resolvedLlamaCliPath
         let args = buildLlamaArgs(model: model, settings: settings)
         return "\"\(cliPath)\" " + args.joined(separator: " ")
+    }
+
+    public static func buildLlamaServerArgs(model: ModelInfo, settings: AppSettings) -> [String] {
+        var args = buildCommonArgs(model: model, settings: settings)
+        args.append(contentsOf: [
+            "--host", settings.serverHost,
+            "--port", "\(settings.serverPort)"
+        ])
+        if settings.enableWebUI {
+            args.append("--webui")
+        } else {
+            args.append("--no-webui")
+        }
+        return args
+    }
+
+    public static func buildServerCommandLine(model: ModelInfo, settings: AppSettings) -> String {
+        let serverPath = settings.resolvedLlamaServerPath
+        let isUnifiedLlama = (serverPath as NSString).lastPathComponent == "llama"
+        let args = buildLlamaServerArgs(model: model, settings: settings)
+        if isUnifiedLlama {
+            return "\"\(serverPath)\" serve " + args.joined(separator: " ")
+        } else {
+            return "\"\(serverPath)\" " + args.joined(separator: " ")
+        }
     }
 
     public func launch(model: ModelInfo, settings: AppSettings) throws {
@@ -71,8 +100,6 @@ public final class TerminalLauncher: Sendable {
         }
 
         let commandLine = Self.buildCommandLine(model: model, settings: settings)
-
-        // Generate a temporary launcher script to run in Terminal.app with proper window title
         let scriptDir = FileManager.default.temporaryDirectory.appendingPathComponent("eLlama_scripts")
         try? FileManager.default.createDirectory(at: scriptDir, withIntermediateDirectories: true)
 
@@ -94,6 +121,48 @@ public final class TerminalLauncher: Sendable {
         read -r
         """
 
+        try runScriptInTerminal(scriptContent: scriptContent, scriptFile: scriptFile)
+    }
+
+    public func launchServer(model: ModelInfo, settings: AppSettings) throws {
+        let serverPath = settings.resolvedLlamaServerPath
+        guard FileManager.default.fileExists(atPath: serverPath) else {
+            throw LaunchError.serverNotFound(serverPath)
+        }
+
+        // Record last served server URL and model name for General tab and quick access
+        settings.lastServerUrl = "http://\(settings.serverHost):\(settings.serverPort)"
+        settings.lastServedModelName = model.modelName
+        settings.save()
+
+        let commandLine = Self.buildServerCommandLine(model: model, settings: settings)
+        let scriptDir = FileManager.default.temporaryDirectory.appendingPathComponent("eLlama_scripts")
+        try? FileManager.default.createDirectory(at: scriptDir, withIntermediateDirectories: true)
+
+        let safeName = model.modelName.components(separatedBy: CharacterSet.alphanumerics.inverted).joined(separator: "_")
+        let scriptFile = scriptDir.appendingPathComponent("serve_\(safeName).command")
+
+        let scriptContent = """
+        #!/bin/bash
+        echo -n -e "\\033]0;llama serve: \(model.modelName)\\007"
+        clear
+        echo "=================================================================="
+        echo " eLlama: Serving \(model.modelName)"
+        echo " Quant: \(model.quant) | Size: \(model.formattedSize)"
+        echo " API Endpoint: http://\(settings.serverHost):\(settings.serverPort)"
+        echo " Web UI:      http://\(settings.serverHost):\(settings.serverPort)"
+        echo "=================================================================="
+        echo ""
+        \(commandLine)
+        echo ""
+        echo "Server process exited. Press [Enter] to close..."
+        read -r
+        """
+
+        try runScriptInTerminal(scriptContent: scriptContent, scriptFile: scriptFile)
+    }
+
+    private func runScriptInTerminal(scriptContent: String, scriptFile: URL) throws {
         try scriptContent.write(to: scriptFile, atomically: true, encoding: .utf8)
 
         // Make executable (chmod +x)
@@ -101,30 +170,41 @@ public final class TerminalLauncher: Sendable {
         attrs[.posixPermissions] = 0o755
         try FileManager.default.setAttributes(attrs, ofItemAtPath: scriptFile.path)
 
-        // Launch in Terminal.app using AppleScript or NSWorkspace
+        let terminalURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal")
+            ?? URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
+
+        let escapedScriptPath = scriptFile.path
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+
         let appleScript = """
         tell application "Terminal"
             activate
-            do script "\(scriptFile.path)"
+            do script "\(escapedScriptPath)"
         end tell
         """
 
         if let scriptObj = NSAppleScript(source: appleScript) {
             var errorInfo: NSDictionary? = nil
             scriptObj.executeAndReturnError(&errorInfo)
-            if let error = errorInfo {
-                // Fallback to NSWorkspace open file
+            if errorInfo != nil {
                 let config = NSWorkspace.OpenConfiguration()
-                NSWorkspace.shared.open([scriptFile], withApplicationAt: URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"), configuration: config, completionHandler: nil)
+                NSWorkspace.shared.open([scriptFile], withApplicationAt: terminalURL, configuration: config, completionHandler: nil)
             }
         } else {
             let config = NSWorkspace.OpenConfiguration()
-            NSWorkspace.shared.open([scriptFile], withApplicationAt: URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"), configuration: config, completionHandler: nil)
+            NSWorkspace.shared.open([scriptFile], withApplicationAt: terminalURL, configuration: config, completionHandler: nil)
         }
     }
 
     public func copyRunCommand(model: ModelInfo, settings: AppSettings) {
         let command = Self.buildCommandLine(model: model, settings: settings)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(command, forType: .string)
+    }
+
+    public func copyServeCommand(model: ModelInfo, settings: AppSettings) {
+        let command = Self.buildServerCommandLine(model: model, settings: settings)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(command, forType: .string)
     }
@@ -145,11 +225,14 @@ public final class TerminalLauncher: Sendable {
 
     public enum LaunchError: LocalizedError {
         case cliNotFound(String)
+        case serverNotFound(String)
 
         public var errorDescription: String? {
             switch self {
             case .cliNotFound(let path):
-                return "llama-cli was not found at: \(path)\n\nPlease install llama.cpp in Settings or configure the path."
+                return "llama-cli was not found at: \(path)\n\nPlease install llama.cpp in Settings or configure the CLI path."
+            case .serverNotFound(let path):
+                return "llama-server was not found at: \(path)\n\nPlease install llama.cpp in Settings or configure the server path."
             }
         }
     }

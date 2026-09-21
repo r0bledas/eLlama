@@ -9,6 +9,9 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
     @Published public var llamaCliPath: String
     @Published public var hideProjectors: Bool
     @Published public var closeToTray: Bool
+    @Published public var suppressNoModelsAlert: Bool
+    @Published public var lastSelectedModelPath: String
+    @Published public var lastSelectedModelFileName: String
 
     // MARK: - Hardware & Compute
     @Published public var threads: Int
@@ -33,6 +36,14 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
     @Published public var repeatLastN: Int
     @Published public var maxTokens: Int
 
+    // MARK: - Server
+    @Published public var serverHost: String
+    @Published public var serverPort: Int
+    @Published public var llamaServerPath: String
+    @Published public var enableWebUI: Bool
+    @Published public var lastServerUrl: String
+    @Published public var lastServedModelName: String
+
     // MARK: - Updates
     @Published public var checkForELlamaUpdates: Bool
     @Published public var checkForLlamaCppUpdates: Bool
@@ -44,6 +55,15 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
         case llamaCliPath = "LlamaCliPath"
         case hideProjectors = "HideProjectors"
         case closeToTray = "CloseToTray"
+        case suppressNoModelsAlert = "SuppressNoModelsAlert"
+        case lastSelectedModelPath = "LastSelectedModelPath"
+        case lastSelectedModelFileName = "LastSelectedModelFileName"
+        case serverHost = "ServerHost"
+        case serverPort = "ServerPort"
+        case llamaServerPath = "LlamaServerPath"
+        case enableWebUI = "EnableWebUI"
+        case lastServerUrl = "LastServerUrl"
+        case lastServedModelName = "LastServedModelName"
         case threads = "Threads"
         case gpuLayers = "GpuLayers"
         case contextSize = "ContextSize"
@@ -71,6 +91,9 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
         self.llamaCliPath = Self.defaultLlamaCliPath()
         self.hideProjectors = true
         self.closeToTray = false
+        self.suppressNoModelsAlert = false
+        self.lastSelectedModelPath = ""
+        self.lastSelectedModelFileName = ""
 
         let cpuCount = ProcessInfo.processInfo.activeProcessorCount
         self.threads = max(1, min(cpuCount, 32))
@@ -99,6 +122,13 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
         self.repeatLastN = 64
         self.maxTokens = -1
 
+        self.serverHost = "127.0.0.1"
+        self.serverPort = 8080
+        self.llamaServerPath = Self.defaultLlamaServerPath()
+        self.enableWebUI = true
+        self.lastServerUrl = ""
+        self.lastServedModelName = ""
+
         self.checkForELlamaUpdates = true
         self.checkForLlamaCppUpdates = true
         self.installedLlamaCppVersion = ""
@@ -111,6 +141,16 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
         self.llamaCliPath = try container.decodeIfPresent(String.self, forKey: .llamaCliPath) ?? Self.defaultLlamaCliPath()
         self.hideProjectors = try container.decodeIfPresent(Bool.self, forKey: .hideProjectors) ?? true
         self.closeToTray = try container.decodeIfPresent(Bool.self, forKey: .closeToTray) ?? false
+        self.suppressNoModelsAlert = try container.decodeIfPresent(Bool.self, forKey: .suppressNoModelsAlert) ?? false
+        self.lastSelectedModelPath = try container.decodeIfPresent(String.self, forKey: .lastSelectedModelPath) ?? ""
+        self.lastSelectedModelFileName = try container.decodeIfPresent(String.self, forKey: .lastSelectedModelFileName) ?? ""
+
+        self.serverHost = try container.decodeIfPresent(String.self, forKey: .serverHost) ?? "127.0.0.1"
+        self.serverPort = try container.decodeIfPresent(Int.self, forKey: .serverPort) ?? 8080
+        self.llamaServerPath = try container.decodeIfPresent(String.self, forKey: .llamaServerPath) ?? Self.defaultLlamaServerPath()
+        self.enableWebUI = try container.decodeIfPresent(Bool.self, forKey: .enableWebUI) ?? true
+        self.lastServerUrl = try container.decodeIfPresent(String.self, forKey: .lastServerUrl) ?? ""
+        self.lastServedModelName = try container.decodeIfPresent(String.self, forKey: .lastServedModelName) ?? ""
 
         let defaultThreads = max(1, min(ProcessInfo.processInfo.activeProcessorCount, 32))
         self.threads = try container.decodeIfPresent(Int.self, forKey: .threads) ?? defaultThreads
@@ -149,6 +189,15 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
         try container.encode(llamaCliPath, forKey: .llamaCliPath)
         try container.encode(hideProjectors, forKey: .hideProjectors)
         try container.encode(closeToTray, forKey: .closeToTray)
+        try container.encode(suppressNoModelsAlert, forKey: .suppressNoModelsAlert)
+        try container.encode(lastSelectedModelPath, forKey: .lastSelectedModelPath)
+        try container.encode(lastSelectedModelFileName, forKey: .lastSelectedModelFileName)
+        try container.encode(serverHost, forKey: .serverHost)
+        try container.encode(serverPort, forKey: .serverPort)
+        try container.encode(llamaServerPath, forKey: .llamaServerPath)
+        try container.encode(enableWebUI, forKey: .enableWebUI)
+        try container.encode(lastServerUrl, forKey: .lastServerUrl)
+        try container.encode(lastServedModelName, forKey: .lastServedModelName)
         try container.encode(threads, forKey: .threads)
         try container.encode(gpuLayers, forKey: .gpuLayers)
         try container.encode(contextSize, forKey: .contextSize)
@@ -192,6 +241,14 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
 
     public var resolvedLlamaCliPath: String {
         Self.resolvePath(llamaCliPath)
+    }
+
+    public var resolvedLlamaServerPath: String {
+        let configured = Self.resolvePath(llamaServerPath)
+        if !configured.isEmpty && FileManager.default.isExecutableFile(atPath: configured) {
+            return configured
+        }
+        return Self.defaultLlamaServerPath()
     }
 
     public static func resolvePath(_ path: String) -> String {
@@ -253,6 +310,42 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
         return inAppSupport
     }
 
+    public static func defaultLlamaServerPath() -> String {
+        let fm = FileManager.default
+
+        let inAppSupport = appSupportDirectory.appendingPathComponent("llama.cpp/llama-server").path
+        if fm.isExecutableFile(atPath: inAppSupport) {
+            return inAppSupport
+        }
+
+        let homebrewServer = "/opt/homebrew/bin/llama-server"
+        if fm.isExecutableFile(atPath: homebrewServer) {
+            return homebrewServer
+        }
+
+        let usrLocalServer = "/usr/local/bin/llama-server"
+        if fm.isExecutableFile(atPath: usrLocalServer) {
+            return usrLocalServer
+        }
+
+        let homebrewLlama = "/opt/homebrew/bin/llama"
+        if fm.isExecutableFile(atPath: homebrewLlama) {
+            return homebrewLlama
+        }
+
+        let usrLocalLlama = "/usr/local/bin/llama"
+        if fm.isExecutableFile(atPath: usrLocalLlama) {
+            return usrLocalLlama
+        }
+
+        let relativeServer = (fm.currentDirectoryPath as NSString).appendingPathComponent("llama.cpp/llama-server")
+        if fm.isExecutableFile(atPath: relativeServer) {
+            return relativeServer
+        }
+
+        return inAppSupport
+    }
+
     // MARK: - Persistence
     public func save() {
         do {
@@ -289,8 +382,15 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
     public func resetToDefaults() {
         modelsDirectory = Self.defaultModelsDirectory()
         llamaCliPath = Self.defaultLlamaCliPath()
+        serverHost = "127.0.0.1"
+        serverPort = 8080
+        llamaServerPath = Self.defaultLlamaServerPath()
+        enableWebUI = true
+        lastServerUrl = ""
+        lastServedModelName = ""
         hideProjectors = true
         closeToTray = false
+        suppressNoModelsAlert = false
 
         let cpuCount = ProcessInfo.processInfo.activeProcessorCount
         threads = max(1, min(cpuCount, 32))
@@ -318,6 +418,72 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
         repeatLastN = 64
         maxTokens = -1
 
+        checkForELlamaUpdates = true
+        checkForLlamaCppUpdates = true
+
+        save()
+    }
+
+    public func resetGeneralDefaults() {
+        modelsDirectory = Self.defaultModelsDirectory()
+        llamaCliPath = Self.defaultLlamaCliPath()
+        serverHost = "127.0.0.1"
+        serverPort = 8080
+        llamaServerPath = Self.defaultLlamaServerPath()
+        enableWebUI = true
+        hideProjectors = true
+        closeToTray = false
+        suppressNoModelsAlert = false
+        save()
+    }
+
+    public func resetHardwareDefaults() {
+        let cpuCount = ProcessInfo.processInfo.activeProcessorCount
+        threads = max(1, min(cpuCount, 32))
+        #if arch(arm64)
+        gpuLayers = 99
+        #else
+        gpuLayers = 33
+        #endif
+
+        contextSize = 8192
+        batchSize = 512
+        uBatchSize = 512
+        save()
+    }
+
+    public func resetAdvancedDefaults() {
+        let cpuCount = ProcessInfo.processInfo.activeProcessorCount
+        threads = max(1, min(cpuCount, 32))
+        #if arch(arm64)
+        gpuLayers = 99
+        #else
+        gpuLayers = 33
+        #endif
+
+        contextSize = 8192
+        batchSize = 512
+        uBatchSize = 512
+
+        temperature = 0.80
+        topP = 0.95
+        topK = 40
+        minP = 0.05
+        repeatPenalty = 1.10
+        repeatLastN = 64
+        maxTokens = -1
+
+        cacheTypeK = "f16"
+        cacheTypeV = "f16"
+        flashAttention = "auto"
+        mlock = false
+        noMMap = false
+        save()
+    }
+
+    public func resetUpdatesDefaults() {
+        checkForELlamaUpdates = true
+        checkForLlamaCppUpdates = true
         save()
     }
 }

@@ -1,6 +1,20 @@
 import SwiftUI
 import AppKit
 
+public enum ActiveSheet: Identifiable {
+    case settings
+    case modelLoadPrefs(model: ModelInfo, isServeMode: Bool)
+
+    public var id: String {
+        switch self {
+        case .settings:
+            return "settings"
+        case .modelLoadPrefs(let model, let isServeMode):
+            return "modelLoad_\(model.id)_\(isServeMode)"
+        }
+    }
+}
+
 public struct ContentView: View {
     @ObservedObject var settings = AppSettings.shared
 
@@ -9,8 +23,7 @@ public struct ContentView: View {
     @State private var selectedModelId: String? = nil
     @State private var sortOrder = [KeyPathComparator(\ModelInfo.modelName)]
     @State private var isLoading = false
-    @State private var showSettings = false
-    @State private var showNoModelsAlert = false
+    @State private var activeSheet: ActiveSheet? = nil
     @State private var backendReady = false
     @State private var statusMessage = "Loading models..."
 
@@ -47,55 +60,6 @@ public struct ContentView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            // Top Toolbar Bar
-            HStack(spacing: 12) {
-                HStack {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.secondary)
-                    TextField("Filter models, publisher, quant...", text: $searchText)
-                        .textFieldStyle(.plain)
-                    if !searchText.isEmpty {
-                        Button(action: { searchText = "" }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(6)
-                .background(Color(NSColor.controlBackgroundColor))
-                .cornerRadius(6)
-                .frame(width: 260)
-
-                Toggle("Hide Projectors (mmproj)", isOn: $settings.hideProjectors)
-                    .onChange(of: settings.hideProjectors) { _ in
-                        settings.save()
-                    }
-
-                Spacer()
-
-                Button(action: { reloadModels() }) {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-                .disabled(isLoading)
-
-                Button(action: { runSelectedModel() }) {
-                    Label("Run Model", systemImage: "play.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(selectedModel == nil || selectedModel?.isProjector == true)
-
-                Button(action: { openSelectedInFinder() }) {
-                    Label("Open in Finder", systemImage: "folder")
-                }
-                .disabled(selectedModel == nil)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(Color(NSColor.windowBackgroundColor))
-
-            Divider()
-
             // Main Model Table
             Table(filteredModels, selection: $selectedModelId, sortOrder: $sortOrder) {
                 TableColumn("Model Name", value: \.modelName) { model in
@@ -139,21 +103,44 @@ public struct ContentView: View {
             .contextMenu(forSelectionType: String.self) { items in
                 if let id = items.first, let model = allModels.first(where: { $0.id == id }) {
                     if !model.isProjector {
+                        Button("Serve Model...") {
+                            selectedModelId = id
+                            activeSheet = .modelLoadPrefs(model: model, isServeMode: true)
+                        }
+
                         Button("Run Model") {
+                            selectedModelId = id
                             runModel(model)
                         }
+
+                        Divider()
+
+                        Button("Configure Settings and Run...") {
+                            selectedModelId = id
+                            activeSheet = .modelLoadPrefs(model: model, isServeMode: false)
+                        }
                     }
+
                     Divider()
+
                     Button("Copy Run Command") {
                         TerminalLauncher.shared.copyRunCommand(model: model, settings: settings)
                     }
+
+                    Button("Copy Serve Command") {
+                        TerminalLauncher.shared.copyServeCommand(model: model, settings: settings)
+                    }
+
                     Button("Copy File Path") {
                         TerminalLauncher.shared.copyFilePath(model: model)
                     }
+
                     Divider()
+
                     Button("Open in Finder") {
                         TerminalLauncher.shared.openContainingFolder(model: model, fallbackDirectory: settings.resolvedModelsDirectory)
                     }
+
                     Button("Refresh List") {
                         reloadModels()
                     }
@@ -178,51 +165,181 @@ public struct ContentView: View {
                     Circle()
                         .fill(backendReady ? Color.green : Color.red)
                         .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
                     Text(backendReady ? "llama.cpp: Ready" : "llama.cpp: Not Found")
                         .font(.caption)
                         .foregroundColor(backendReady ? .green : .red)
+                        .accessibilityLabel(backendReady ? "Backend llama.cpp ready" : "Backend llama.cpp not found")
                 }
 
                 Divider()
                     .frame(height: 14)
 
-                Button(action: { showSettings = true }) {
+                Button(action: {
+                    activeSheet = .settings
+                }) {
                     Label("Settings", systemImage: "gearshape")
-                        .font(.caption)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityLabel("Settings")
+                .help("Open Settings")
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
             .background(Color(NSColor.windowBackgroundColor))
         }
         .frame(minWidth: 850, minHeight: 480)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                HStack(spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.secondary)
+                            .font(.system(size: 11))
+                        TextField("Search", text: $searchText)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 11))
+                            .frame(width: 170)
+                        if !searchText.isEmpty {
+                            Button(action: { searchText = "" }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                                    .font(.system(size: 10))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 7)
+                    .frame(height: 26)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(Color(NSColor.separatorColor), lineWidth: 0.5)
+                    )
+
+                    Button(action: { reloadModels() }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "arrow.clockwise")
+                            Text("Refresh")
+                                .lineLimit(1)
+                        }
+                    }
+                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: !isLoading, width: 100))
+                    .disabled(isLoading)
+                    .help("Reload models from directory")
+
+                    Button(action: { openWebUI() }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "globe")
+                            Text("WebUI")
+                                .lineLimit(1)
+                        }
+                    }
+                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: true, width: 100))
+                    .help("Open Web UI in default browser")
+                }
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 8) {
+                    Button(action: { openSelectedInFinder() }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "folder")
+                            Text("Finder")
+                                .lineLimit(1)
+                        }
+                    }
+                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: selectedModel != nil, width: 100))
+                    .disabled(selectedModel == nil)
+                    .help("Open selected model in Finder")
+
+                    let isServeAvailable = selectedModel != nil && selectedModel?.isProjector == false
+                    Button(action: { serveSelectedModel() }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "network")
+                            Text("Serve")
+                                .lineLimit(1)
+                        }
+                    }
+                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: isServeAvailable, width: 100))
+                    .disabled(!isServeAvailable)
+                    .help("Configure and start llama-server")
+
+                    let isRunAvailable = selectedModel != nil && selectedModel?.isProjector == false
+                    Button(action: { runSelectedModel() }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "play.fill")
+                            Text("Run Model")
+                                .lineLimit(1)
+                        }
+                    }
+                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: isRunAvailable, isBlue: true, width: 100))
+                    .disabled(!isRunAvailable)
+                    .help("Launch interactive chat in Terminal")
+                }
+            }
+        }
+        .navigationTitle("")
+        .background(ClickOutsideDeselector {
+            selectedModelId = nil
+        })
+        .onChange(of: selectedModelId) { newId in
+            if let id = newId, let model = allModels.first(where: { $0.id == id }) {
+                saveLastSelectedModel(model)
+            }
+        }
         .onAppear {
             checkBackend()
             reloadModels(promptIfEmpty: true)
         }
-        .sheet(isPresented: $showSettings, onDismiss: {
+        .sheet(item: $activeSheet, onDismiss: {
             checkBackend()
             reloadModels()
-        }) {
-            SettingsView(onSave: {
-                checkBackend()
-                reloadModels()
-            })
-        }
-        .alert("No Models Found", isPresented: $showNoModelsAlert) {
-            Button("Select Models Folder", role: .none) {
-                chooseModelsFolder()
+        }) { sheet in
+            switch sheet {
+            case .settings:
+                SettingsView(
+                    onSave: {
+                        checkBackend()
+                        reloadModels()
+                    }
+                )
+            case .modelLoadPrefs(let model, let isServeMode):
+                ModelLoadPrefsViewerWindow(
+                    model: model,
+                    isServeMode: isServeMode,
+                    onLaunch: {
+                        if isServeMode {
+                            serveModel(model)
+                        } else {
+                            runModel(model)
+                        }
+                    }
+                )
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("No GGUF models were found in:\n\n\(settings.resolvedModelsDirectory)\n\nWould you like to select your models folder now?")
+        }
+    }
+
+    private func openSettings(for model: ModelInfo? = nil, initialTab: SettingsView.SettingsTab = .general, isServeMode: Bool = false) {
+        if let model = model {
+            activeSheet = .modelLoadPrefs(model: model, isServeMode: isServeMode)
+        } else {
+            activeSheet = .settings
         }
     }
 
     private func checkBackend() {
-        let path = settings.resolvedLlamaCliPath
-        backendReady = FileManager.default.fileExists(atPath: path)
+        let cliPath = settings.resolvedLlamaCliPath
+        let serverPath = settings.resolvedLlamaServerPath
+        backendReady = FileManager.default.fileExists(atPath: cliPath) || FileManager.default.fileExists(atPath: serverPath)
+    }
+
+    private func saveLastSelectedModel(_ model: ModelInfo) {
+        settings.lastSelectedModelPath = model.filePath
+        settings.lastSelectedModelFileName = model.fileName
+        settings.save()
     }
 
     private func reloadModels(promptIfEmpty: Bool = false) {
@@ -232,10 +349,43 @@ public struct ContentView: View {
             await MainActor.run {
                 self.allModels = models
                 self.isLoading = false
-                if models.isEmpty && promptIfEmpty {
-                    self.showNoModelsAlert = true
+
+                // By default always on launch select either the last selected / launched model
+                if self.selectedModelId == nil && !models.isEmpty {
+                    let candidate = models.first(where: { $0.filePath == self.settings.lastSelectedModelPath })
+                        ?? models.first(where: { !self.settings.lastSelectedModelFileName.isEmpty && $0.fileName == self.settings.lastSelectedModelFileName })
+                        ?? models.first(where: { !$0.isProjector })
+                        ?? models.first
+                    if let candidate = candidate {
+                        self.selectedModelId = candidate.id
+                    }
+                }
+
+                if models.isEmpty && promptIfEmpty && !self.settings.suppressNoModelsAlert {
+                    self.showNoModelsFolderDialog()
                 }
             }
+        }
+    }
+
+    private func showNoModelsFolderDialog() {
+        let alert = NSAlert()
+        alert.messageText = "No Models Found"
+        alert.informativeText = "No GGUF models were found in:\n\n\(settings.resolvedModelsDirectory)\n\nWould you like to select your models folder now?"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Select Models Folder")
+        alert.addButton(withTitle: "Cancel")
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "Don't show again"
+
+        let response = alert.runModal()
+        if alert.suppressionButton?.state == .on {
+            settings.suppressNoModelsAlert = true
+            settings.save()
+        }
+
+        if response == .alertFirstButtonReturn {
+            chooseModelsFolder()
         }
     }
 
@@ -246,9 +396,10 @@ public struct ContentView: View {
 
     private func runModel(_ model: ModelInfo) {
         if model.isProjector { return }
+        saveLastSelectedModel(model)
 
         guard FileManager.default.fileExists(atPath: settings.resolvedLlamaCliPath) else {
-            showSettings = true
+            openSettings(for: model, initialTab: .general, isServeMode: false)
             return
         }
 
@@ -263,9 +414,43 @@ public struct ContentView: View {
         }
     }
 
+    private func serveSelectedModel() {
+        guard let model = selectedModel else { return }
+        saveLastSelectedModel(model)
+        activeSheet = .modelLoadPrefs(model: model, isServeMode: true)
+    }
+
+    private func serveModel(_ model: ModelInfo) {
+        if model.isProjector { return }
+        saveLastSelectedModel(model)
+
+        let serverPath = settings.resolvedLlamaServerPath
+        guard FileManager.default.fileExists(atPath: serverPath) else {
+            openSettings(for: model, initialTab: .general, isServeMode: true)
+            return
+        }
+
+        do {
+            try TerminalLauncher.shared.launchServer(model: model, settings: settings)
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Failed to Serve Model"
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .critical
+            alert.runModal()
+        }
+    }
+
     private func openSelectedInFinder() {
         guard let model = selectedModel else { return }
         TerminalLauncher.shared.openContainingFolder(model: model, fallbackDirectory: settings.resolvedModelsDirectory)
+    }
+
+    private func openWebUI() {
+        let urlString = settings.lastServerUrl.isEmpty ? "http://\(settings.serverHost):\(settings.serverPort)" : settings.lastServerUrl
+        if let url = URL(string: urlString) {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     private func chooseModelsFolder() {
@@ -279,6 +464,173 @@ public struct ContentView: View {
             settings.modelsDirectory = url.path
             settings.save()
             reloadModels()
+        }
+    }
+}
+
+// MARK: - Classic Toolbar Button Style
+public struct ClassicToolbarButtonStyle: ButtonStyle {
+    public var isAvailable: Bool = true
+    public var isBlue: Bool = false
+    public var width: CGFloat = 100
+    public var height: CGFloat = 26
+
+    public init(isAvailable: Bool = true, isBlue: Bool = false, width: CGFloat = 100, height: CGFloat = 26) {
+        self.isAvailable = isAvailable
+        self.isBlue = isBlue
+        self.width = width
+        self.height = height
+    }
+
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: isBlue && isAvailable ? .semibold : .medium))
+            .foregroundColor(foregroundColor)
+            .frame(width: width, height: height)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(backgroundColor(isPressed: configuration.isPressed))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isAvailable && !isBlue && configuration.isPressed ? Color.primary.opacity(0.12) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(borderColor(isPressed: configuration.isPressed), lineWidth: 0.5)
+            )
+            .opacity(isAvailable ? 1.0 : 0.45)
+    }
+
+    private var foregroundColor: Color {
+        if !isAvailable {
+            return Color(NSColor.disabledControlTextColor)
+        }
+        if isBlue {
+            return .white
+        }
+        return .primary
+    }
+
+    private func backgroundColor(isPressed: Bool) -> Color {
+        if !isAvailable {
+            return Color(NSColor.controlColor).opacity(0.35)
+        }
+        if isBlue {
+            return isPressed ? Color(red: 0.08, green: 0.38, blue: 0.85) : Color(red: 0.12, green: 0.48, blue: 0.98)
+        }
+        return Color(NSColor.controlColor)
+    }
+
+    private func borderColor(isPressed: Bool) -> Color {
+        if !isAvailable {
+            return Color.clear
+        }
+        if isBlue {
+            return Color.white.opacity(0.25)
+        }
+        return Color(NSColor.separatorColor)
+    }
+}
+
+public struct ClassicBlueButtonStyle: ButtonStyle {
+    public var isAvailable: Bool
+    public var width: CGFloat
+
+    public init(isAvailable: Bool, width: CGFloat = 100) {
+        self.isAvailable = isAvailable
+        self.width = width
+    }
+
+    public func makeBody(configuration: Configuration) -> some View {
+        ClassicToolbarButtonStyle(isAvailable: isAvailable, isBlue: true, width: width).makeBody(configuration: configuration)
+    }
+}
+
+// MARK: - Click Outside Deselector
+public struct ClickOutsideDeselector: NSViewRepresentable {
+    public var onDeselect: () -> Void
+
+    public init(onDeselect: @escaping () -> Void) {
+        self.onDeselect = onDeselect
+    }
+
+    public func makeCoordinator() -> Coordinator {
+        Coordinator(onDeselect: onDeselect)
+    }
+
+    public func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        context.coordinator.setupMonitor(for: view)
+        return view
+    }
+
+    public func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.onDeselect = onDeselect
+    }
+
+    public static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.tearDown()
+    }
+
+    public class Coordinator {
+        public var onDeselect: () -> Void
+        private var monitor: Any?
+
+        public init(onDeselect: @escaping () -> Void) {
+            self.onDeselect = onDeselect
+        }
+
+        public func setupMonitor(for view: NSView) {
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak view, weak self] event in
+                guard let self = self, let view = view, let window = view.window, event.window == window else {
+                    return event
+                }
+                guard let cv = window.contentView else { return event }
+                let pt = event.locationInWindow
+                guard let hit = cv.hitTest(pt) else { return event }
+
+                var check: NSView? = hit
+                var isControlOrProtected = false
+                var inTableView = false
+                var clickedEmptyTableRow = false
+
+                while let current = check {
+                    if current is NSTableHeaderView || current is NSScroller || current is NSControl || current is NSButton || current is NSTextView || String(describing: type(of: current)).contains("Toolbar") || String(describing: type(of: current)).contains("Titlebar") {
+                        isControlOrProtected = true
+                        break
+                    }
+                    if let tv = current as? NSTableView {
+                        inTableView = true
+                        let ptInTable = tv.convert(pt, from: nil)
+                        let row = tv.row(at: ptInTable)
+                        if row == -1 {
+                            clickedEmptyTableRow = true
+                        }
+                        break
+                    }
+                    check = current.superview
+                }
+
+                if clickedEmptyTableRow || (!inTableView && !isControlOrProtected) {
+                    DispatchQueue.main.async {
+                        self.onDeselect()
+                    }
+                }
+
+                return event
+            }
+        }
+
+        public func tearDown() {
+            if let m = monitor {
+                NSEvent.removeMonitor(m)
+                monitor = nil
+            }
+        }
+
+        deinit {
+            tearDown()
         }
     }
 }

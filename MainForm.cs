@@ -8,11 +8,13 @@ public class MainForm : Form
 {
     private string ModelsRootDirectory => AppSettings.Instance.ResolvedModelsDirectory;
     private string LlamaCliPath => AppSettings.Instance.ResolvedLlamaCliPath;
+    private string LlamaServerPath => AppSettings.Instance.ResolvedLlamaServerPath;
 
     private TextBox txtSearch = null!;
     private CheckBox chkHideProjectors = null!;
     private Button btnRefresh = null!;
     private Button btnRun = null!;
+    private Button btnServe = null!;
     private Button btnOpenFolder = null!;
     private ListView lvModels = null!;
     private ToolStripStatusLabel lblCount = null!;
@@ -174,17 +176,27 @@ public class MainForm : Form
         {
             Text = "Run Model",
             Location = new Point(585, 10),
-            Width = 110,
+            Width = 100,
             Height = 28,
             Enabled = false,
             Font = new Font(Font, FontStyle.Bold)
         };
         btnRun.Click += (s, e) => RunSelectedModel();
 
+        btnServe = new Button
+        {
+            Text = "Serve Model",
+            Location = new Point(690, 10),
+            Width = 100,
+            Height = 28,
+            Enabled = false
+        };
+        btnServe.Click += (s, e) => ServeSelectedModel();
+
         btnOpenFolder = new Button
         {
             Text = "Open Folder",
-            Location = new Point(705, 10),
+            Location = new Point(795, 10),
             Width = 95,
             Height = 28,
             Enabled = false
@@ -198,6 +210,7 @@ public class MainForm : Form
             chkHideProjectors,
             btnRefresh,
             btnRun,
+            btnServe,
             btnOpenFolder
         });
 
@@ -256,7 +269,11 @@ public class MainForm : Form
         {
             Font = new Font(Font, FontStyle.Bold)
         };
+        var menuServe = new ToolStripMenuItem("Serve Model (llama-server)", null, (s, e) => ServeSelectedModel());
+        var menuConfigRun = new ToolStripMenuItem("Configure Settings and Run...", null, (s, e) => OpenSettingsAndRun(forServe: false));
+        var menuConfigServe = new ToolStripMenuItem("Configure Settings and Serve...", null, (s, e) => OpenSettingsAndRun(forServe: true));
         var menuCopyCmd = new ToolStripMenuItem("Copy Run Command", null, (s, e) => CopyRunCommand());
+        var menuCopyServeCmd = new ToolStripMenuItem("Copy Serve Command", null, (s, e) => CopyServeCommand());
         var menuCopyPath = new ToolStripMenuItem("Copy File Path", null, (s, e) => CopyFilePath());
         var menuOpenFolder = new ToolStripMenuItem("Open in File Explorer", null, (s, e) => OpenSelectedFolder());
         var menuRefresh = new ToolStripMenuItem("Refresh List", null, (s, e) => LoadModels());
@@ -264,8 +281,13 @@ public class MainForm : Form
         contextMenu.Items.AddRange(new ToolStripItem[]
         {
             menuRun,
+            menuServe,
+            new ToolStripSeparator(),
+            menuConfigRun,
+            menuConfigServe,
             new ToolStripSeparator(),
             menuCopyCmd,
+            menuCopyServeCmd,
             menuCopyPath,
             new ToolStripSeparator(),
             menuOpenFolder,
@@ -589,6 +611,7 @@ public class MainForm : Form
         if (model == null)
         {
             btnRun.Enabled = false;
+            btnServe.Enabled = false;
             btnOpenFolder.Enabled = false;
             btnRun.Text = "Run Model";
             return;
@@ -599,11 +622,13 @@ public class MainForm : Form
         if (model.IsProjector)
         {
             btnRun.Enabled = false;
+            btnServe.Enabled = false;
             btnRun.Text = "Vision Projector";
             return;
         }
 
         btnRun.Enabled = true;
+        btnServe.Enabled = true;
         btnRun.Text = "Run Model";
     }
 
@@ -654,6 +679,97 @@ public class MainForm : Form
         catch (Exception ex)
         {
             MessageBox.Show($"Failed to launch model:\n{ex.Message}", "Launch Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void ServeSelectedModel()
+    {
+        var model = GetSelectedModel();
+        if (model == null) return;
+
+        if (model.IsProjector)
+        {
+            MessageBox.Show(
+                "This file is a vision projector (mmproj), not a standalone language model.\n\nPlease select an LLM model to serve.",
+                "Vision Projector",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information
+            );
+            return;
+        }
+
+        if (!File.Exists(LlamaServerPath))
+        {
+            var res = MessageBox.Show(
+                $"llama-server.exe was not found at:\n{LlamaServerPath}\n\nWould you like to configure the path in Settings?",
+                "llama-server Not Found",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning
+            );
+            if (res == DialogResult.Yes)
+            {
+                OpenSettings();
+            }
+            return;
+        }
+
+        string serverArgs = BuildLlamaServerArgs(model);
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "cmd.exe",
+            Arguments = $"/k \"title llama serve: {model.ModelName} & echo Serving {model.ModelName} at http://{AppSettings.Instance.ServerHost}:{AppSettings.Instance.ServerPort} & \"\"{LlamaServerPath}\"\" {serverArgs}\"",
+            UseShellExecute = true
+        };
+
+        try
+        {
+            Process.Start(psi);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to serve model:\n{ex.Message}", "Launch Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private static string BuildLlamaServerArgs(ModelInfo model)
+    {
+        var s = AppSettings.Instance;
+        string commonArgs = BuildLlamaArgs(model);
+        return $"{commonArgs} --host {s.ServerHost} --port {s.ServerPort}";
+    }
+
+    private void CopyServeCommand()
+    {
+        var model = GetSelectedModel();
+        if (model == null) return;
+
+        string serverArgs = BuildLlamaServerArgs(model);
+        string cmd = $"\"{LlamaServerPath}\" {serverArgs}";
+        Clipboard.SetText(cmd);
+    }
+
+    private void OpenSettingsAndRun(bool forServe)
+    {
+        var model = GetSelectedModel();
+        if (model == null) return;
+
+        using var settingsForm = new SettingsForm(allModels, () =>
+        {
+            UpdateBackendStatus();
+            FilterModels();
+        });
+
+        if (settingsForm.ShowDialog(this) == DialogResult.OK)
+        {
+            if (forServe)
+            {
+                ServeSelectedModel();
+            }
+            else
+            {
+                RunSelectedModel();
+            }
         }
     }
 

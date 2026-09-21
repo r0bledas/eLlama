@@ -22,6 +22,14 @@ public class AppSettings
     [JsonIgnore]
     public string ResolvedLlamaCliPath => ResolvePath(LlamaCliPath);
 
+    // Server
+    public string ServerHost { get; set; } = "127.0.0.1";
+    public int ServerPort { get; set; } = 8080;
+    public string LlamaServerPath { get; set; } = GetDefaultLlamaServerPath();
+
+    [JsonIgnore]
+    public string ResolvedLlamaServerPath => ResolvePath(LlamaServerPath);
+
     // Hardware & Compute
     public int Threads { get; set; } = 4;
     public int GpuLayers { get; set; } = 0;
@@ -70,6 +78,20 @@ public class AppSettings
         if (File.Exists(utilPath)) return utilPath;
 
         return Path.Combine("llama.cpp", "llama-cli.exe");
+    }
+
+    public static string GetDefaultLlamaServerPath()
+    {
+        string inSubdir = Path.Combine(AppDir, "llama.cpp", "llama-server.exe");
+        if (File.Exists(inSubdir)) return Path.Combine("llama.cpp", "llama-server.exe");
+
+        string nextToExe = Path.Combine(AppDir, "llama-server.exe");
+        if (File.Exists(nextToExe)) return "llama-server.exe";
+
+        string utilPath = @"C:\Users\T450\Utilities\llama.cpp\llama-server.exe";
+        if (File.Exists(utilPath)) return utilPath;
+
+        return Path.Combine("llama.cpp", "llama-server.exe");
     }
 
     public static string GetSettingsFilePath()

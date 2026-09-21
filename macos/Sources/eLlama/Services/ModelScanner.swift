@@ -21,7 +21,7 @@ public final class ModelScanner: Sendable {
             }
 
             let rootURL = URL(fileURLWithPath: resolvedPath).standardizedFileURL
-            let resourceKeys: [URLResourceKey] = [.isRegularFileKey, .fileSizeKey]
+            let resourceKeys: [URLResourceKey] = [.isRegularFileKey, .fileSizeKey, .totalFileSizeKey]
 
             guard let enumerator = fm.enumerator(
                 at: rootURL,
@@ -33,13 +33,13 @@ public final class ModelScanner: Sendable {
 
             var models: [ModelInfo] = []
 
-            for case let fileURL as URL in enumerator {
+            while let fileURL = enumerator.nextObject() as? URL {
                 guard fileURL.pathExtension.lowercased() == "gguf" else { continue }
 
                 do {
                     let resourceValues = try fileURL.resourceValues(forKeys: Set(resourceKeys))
                     guard resourceValues.isRegularFile == true else { continue }
-                    let fileSize = Int64(resourceValues.fileSize ?? 0)
+                    let fileSize = Int64(resourceValues.totalFileSize ?? resourceValues.fileSize ?? 0)
 
                     if let model = Self.parseModel(fileURL: fileURL, rootURL: rootURL, fileSize: fileSize) {
                         models.append(model)
@@ -68,7 +68,8 @@ public final class ModelScanner: Sendable {
             }
         }
 
-        let isProjector = filename.lowercased().hasPrefix("mmproj")
+        let lowerFilename = filename.lowercased()
+        let isProjector = lowerFilename.hasPrefix("mmproj") || lowerFilename.contains("-mmproj") || lowerFilename.contains("_mmproj")
 
         // Quantization regex match
         var quant = "Unknown"
@@ -92,9 +93,14 @@ public final class ModelScanner: Sendable {
         }
 
         if isProjector {
-            let cleaned = baseName.replacingOccurrences(of: "mmproj-", with: "", options: .caseInsensitive)
-                .trimmingCharacters(in: CharacterSet(charactersIn: "._-"))
-            baseName = "[Vision Projector] " + cleaned
+            let cleaned = baseName
+                .replacingOccurrences(of: "mmproj-", with: "", options: .caseInsensitive)
+                .replacingOccurrences(of: "-mmproj", with: "", options: .caseInsensitive)
+                .replacingOccurrences(of: "mmproj_", with: "", options: .caseInsensitive)
+                .replacingOccurrences(of: "_mmproj", with: "", options: .caseInsensitive)
+                .replacingOccurrences(of: "mmproj", with: "", options: .caseInsensitive)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "._- "))
+            baseName = "[Vision Projector] " + (cleaned.isEmpty ? "Vision Projector" : cleaned)
         }
 
         return ModelInfo(

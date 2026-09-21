@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import Combine
 
 public struct UpdateResult: Sendable {
     public let hasUpdate: Bool
@@ -23,11 +24,70 @@ public struct UpdateResult: Sendable {
     }
 }
 
-public final class UpdateManager: @unchecked Sendable {
+public final class UpdateManager: ObservableObject, @unchecked Sendable {
     public static let shared = UpdateManager()
-    public static let currentELlamaVersion = "1.2.0"
+    public static let currentELlamaVersion = "2.0.0"
+
+    @Published public var eLlamaUpdateStatus: String = "Check for Updates"
+    @Published public var isCheckingELlama: Bool = false
+    @Published public var llamaCppUpdateStatus: String = "Download Latest llama.cpp (Metal)"
+    @Published public var isDownloadingLlamaCpp: Bool = false
 
     private init() {}
+
+    public func checkELlamaUpdate() {
+        isCheckingELlama = true
+        Task {
+            let res = await checkELlama()
+            await MainActor.run {
+                self.isCheckingELlama = false
+                if res.hasUpdate, let downloadURL = res.assetDownloadURL {
+                    self.eLlamaUpdateStatus = "Update Available: \(res.latestVersion)"
+                    Task {
+                        try? await self.downloadAndOpenELlamaUpdate(downloadURL: downloadURL)
+                    }
+                } else {
+                    self.eLlamaUpdateStatus = "Latest is installed"
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        UpdateManager.shared.eLlamaUpdateStatus = "Check for Updates"
+                    }
+                }
+            }
+        }
+    }
+
+    public func installLlamaCpp(completion: (@Sendable () -> Void)? = nil) {
+        Task {
+            await MainActor.run {
+                self.isDownloadingLlamaCpp = true
+                self.llamaCppUpdateStatus = "Downloading..."
+            }
+            do {
+                _ = try await downloadAndInstallLlamaCpp { status in
+                    Task { @MainActor in
+                        UpdateManager.shared.llamaCppUpdateStatus = status
+                    }
+                }
+                await MainActor.run {
+                    self.isDownloadingLlamaCpp = false
+                    self.llamaCppUpdateStatus = "Latest is installed"
+                    completion?()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        UpdateManager.shared.llamaCppUpdateStatus = "Download Latest llama.cpp (Metal)"
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.isDownloadingLlamaCpp = false
+                    self.llamaCppUpdateStatus = "Update Failed"
+                    completion?()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        UpdateManager.shared.llamaCppUpdateStatus = "Download Latest llama.cpp (Metal)"
+                    }
+                }
+            }
+        }
+    }
 
     // MARK: - eLlama Updates
     public func checkELlama() async -> UpdateResult {
@@ -218,8 +278,20 @@ public final class UpdateManager: @unchecked Sendable {
 
         try? FileManager.default.removeItem(at: tempZipURL)
 
-        // Ensure llama-cli is executable (chmod +x)
+        // Ensure llama-cli and llama-server are executable (chmod +x)
         let cliURL = targetDir.appendingPathComponent("llama-cli")
+        let serverURL = targetDir.appendingPathComponent("llama-server")
+
+        if FileManager.default.fileExists(atPath: serverURL.path) {
+            if var attrs = try? FileManager.default.attributesOfItem(atPath: serverURL.path) {
+                attrs[.posixPermissions] = 0o755
+                try? FileManager.default.setAttributes(attrs, ofItemAtPath: serverURL.path)
+            }
+            DispatchQueue.main.async {
+                AppSettings.shared.llamaServerPath = serverURL.path
+            }
+        }
+
         if FileManager.default.fileExists(atPath: cliURL.path) {
             var attrs = try FileManager.default.attributesOfItem(atPath: cliURL.path)
             attrs[.posixPermissions] = 0o755
@@ -236,24 +308,36 @@ public final class UpdateManager: @unchecked Sendable {
             return true
         }
 
-        // Sometimes the zip extracts into a subfolder; search for llama-cli inside targetDir
+        // Sometimes the zip extracts into a subfolder; search for llama-cli and llama-server inside targetDir
         if let enumerator = FileManager.default.enumerator(at: targetDir, includingPropertiesForKeys: nil) {
-            for case let fileURL as URL in enumerator {
-                if fileURL.lastPathComponent == "llama-cli" {
+            var foundCliPath: String? = nil
+            while let fileURL = enumerator.nextObject() as? URL {
+                if fileURL.lastPathComponent == "llama-server" {
+                    if var attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path) {
+                        attrs[.posixPermissions] = 0o755
+                        try? FileManager.default.setAttributes(attrs, ofItemAtPath: fileURL.path)
+                    }
+                    DispatchQueue.main.async {
+                        AppSettings.shared.llamaServerPath = fileURL.path
+                    }
+                } else if fileURL.lastPathComponent == "llama-cli" {
                     var attrs = try FileManager.default.attributesOfItem(atPath: fileURL.path)
                     attrs[.posixPermissions] = 0o755
                     try FileManager.default.setAttributes(attrs, ofItemAtPath: fileURL.path)
-
-                    DispatchQueue.main.async {
-                        AppSettings.shared.llamaCliPath = fileURL.path
-                        if let tag = releaseTag, !tag.isEmpty {
-                            AppSettings.shared.installedLlamaCppVersion = tag
-                        }
-                        AppSettings.shared.save()
-                    }
-                    progress("Installation Complete!")
-                    return true
+                    foundCliPath = fileURL.path
                 }
+            }
+
+            if let cliPath = foundCliPath {
+                DispatchQueue.main.async {
+                    AppSettings.shared.llamaCliPath = cliPath
+                    if let tag = releaseTag, !tag.isEmpty {
+                        AppSettings.shared.installedLlamaCppVersion = tag
+                    }
+                    AppSettings.shared.save()
+                }
+                progress("Installation Complete!")
+                return true
             }
         }
 

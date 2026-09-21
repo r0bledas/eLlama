@@ -10,6 +10,9 @@ public class SettingsForm : Form
     // General Tab
     private TextBox txtDirectory = null!;
     private TextBox txtLlamaCli = null!;
+    private TextBox txtLlamaServer = null!;
+    private TextBox txtServerHost = null!;
+    private NumericUpDown numServerPort = null!;
     private CheckBox chkHideProjectors = null!;
     private CheckBox chkCloseToTray = null!;
     private ComboBox cmbExportFormat = null!;
@@ -207,11 +210,71 @@ public class SettingsForm : Form
 
         grpBackend.Controls.AddRange(new Control[] { lblLlama, txtLlamaCli, btnBrowseLlama });
 
+        // Server Backend
+        var grpServer = new GroupBox
+        {
+            Text = "llama-server Backend",
+            Location = new Point(12, 184),
+            Size = new Size(590, 110)
+        };
+
+        var lblServer = new Label
+        {
+            Text = "llama-server.exe Executable Path:",
+            Location = new Point(14, 22),
+            AutoSize = true
+        };
+
+        txtLlamaServer = new TextBox
+        {
+            Location = new Point(14, 42),
+            Size = new Size(465, 24)
+        };
+
+        var btnBrowseServer = new Button
+        {
+            Text = "Browse...",
+            Location = new Point(489, 40),
+            Size = new Size(85, 26)
+        };
+        btnBrowseServer.Click += (s, e) =>
+        {
+            string current = AppSettings.ResolvePath(txtLlamaServer.Text);
+            string initDir = File.Exists(current) ? Path.GetDirectoryName(current)! : Path.Combine(AppSettings.AppDir, "llama.cpp");
+            if (!Directory.Exists(initDir)) initDir = AppSettings.AppDir;
+
+            using var ofd = new OpenFileDialog
+            {
+                Title = "Select llama-server.exe",
+                Filter = "llama-server.exe|llama-server*.exe|All Executables (*.exe)|*.exe",
+                InitialDirectory = initDir
+            };
+            if (ofd.ShowDialog(this) == DialogResult.OK)
+            {
+                txtLlamaServer.Text = AppSettings.ToRelativePath(ofd.FileName);
+            }
+        };
+
+        var lblHost = new Label { Text = "Host:", Location = new Point(14, 76), AutoSize = true };
+        txtServerHost = new TextBox { Text = "127.0.0.1", Location = new Point(52, 73), Size = new Size(110, 24) };
+
+        var lblPort = new Label { Text = "Port:", Location = new Point(180, 76), AutoSize = true };
+        numServerPort = new NumericUpDown
+        {
+            Location = new Point(220, 73),
+            Size = new Size(80, 24),
+            Minimum = 1024,
+            Maximum = 65535,
+            Value = 8080
+        };
+
+        grpServer.Controls.AddRange(new Control[] { lblServer, txtLlamaServer, btnBrowseServer, lblHost, txtServerHost, lblPort, numServerPort });
+
         // Display & System Preferences
         var grpFilter = new GroupBox
         {
             Text = "Preferences",
-            Location = new Point(12, 184),
+            Location = new Point(12, 302),
             Size = new Size(590, 60)
         };
 
@@ -235,7 +298,7 @@ public class SettingsForm : Form
         var grpExport = new GroupBox
         {
             Text = "Export Model Library",
-            Location = new Point(12, 252),
+            Location = new Point(12, 370),
             Size = new Size(590, 80)
         };
 
@@ -283,7 +346,7 @@ public class SettingsForm : Form
         var grpUpdates = new GroupBox
         {
             Text = "Updates",
-            Location = new Point(12, 340),
+            Location = new Point(12, 458),
             Size = new Size(590, 98)
         };
 
@@ -419,7 +482,7 @@ public class SettingsForm : Form
 
         grpUpdates.Controls.AddRange(new Control[] { chkCheckELlamaUpdates, chkCheckLlamaUpdates, btnUpdateELlama, btnUpdateLlamaCpp });
 
-        tab.Controls.AddRange(new Control[] { grpDirectory, grpBackend, grpFilter, grpExport, grpUpdates });
+        tab.Controls.AddRange(new Control[] { grpDirectory, grpBackend, grpServer, grpFilter, grpExport, grpUpdates });
     }
 
     private void BuildAdvancedTab(TabPage tab)
@@ -690,6 +753,9 @@ public class SettingsForm : Form
         // General
         txtDirectory.Text = s.ModelsDirectory;
         txtLlamaCli.Text = s.LlamaCliPath;
+        txtLlamaServer.Text = s.LlamaServerPath;
+        txtServerHost.Text = s.ServerHost;
+        numServerPort.Value = Math.Clamp(s.ServerPort, numServerPort.Minimum, numServerPort.Maximum);
         chkHideProjectors.Checked = s.HideProjectors;
         chkCloseToTray.Checked = s.CloseToTray;
         chkCheckELlamaUpdates.Checked = s.CheckForELlamaUpdates;
@@ -788,7 +854,9 @@ public class SettingsForm : Form
         numMinP.Value = 0.05m;
         numRepeatPenalty.Value = 1.10m;
         numRepeatLastN.Value = 64;
-        cmbMaxTokens.SelectedIndex = 0;
+        txtLlamaServer.Text = AppSettings.GetDefaultLlamaServerPath();
+        txtServerHost.Text = "127.0.0.1";
+        numServerPort.Value = 8080;
         chkCloseToTray.Checked = false;
         chkCheckELlamaUpdates.Checked = true;
         chkCheckLlamaUpdates.Checked = true;
@@ -809,6 +877,15 @@ public class SettingsForm : Form
         {
             s.LlamaCliPath = AppSettings.ToRelativePath(newLlamaCli);
         }
+
+        string newLlamaServer = txtLlamaServer.Text.Trim();
+        if (!string.IsNullOrEmpty(newLlamaServer))
+        {
+            s.LlamaServerPath = AppSettings.ToRelativePath(newLlamaServer);
+        }
+
+        s.ServerHost = string.IsNullOrWhiteSpace(txtServerHost.Text) ? "127.0.0.1" : txtServerHost.Text.Trim();
+        s.ServerPort = (int)numServerPort.Value;
 
         s.HideProjectors = chkHideProjectors.Checked;
         s.CloseToTray = chkCloseToTray.Checked;

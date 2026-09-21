@@ -24,6 +24,18 @@ settings.json
 # OS files
 Thumbs.db
 desktop.ini
+.DS_Store
+**/.DS_Store
+
+# IDE and tool files
+.impeccable/
+.github/agents/
+.github/hooks/
+.github/skills/
+
+# macOS build outputs
+macos/.build/
+macos/dist/
 
 Release/
 [Rr]elease/

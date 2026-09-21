@@ -3,7 +3,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-VERSION="1.2.0"
+VERSION="2.0.0"
 APP_NAME="eLlama.app"
 OUTPUT_DIR="$ROOT_DIR/dist"
 
