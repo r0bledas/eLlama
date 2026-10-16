@@ -2,7 +2,17 @@ import SwiftUI
 import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Disable macOS automatic window tabbing before any window is created.
+        NSWindow.allowsAutomaticWindowTabbing = false
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSWindow.allowsAutomaticWindowTabbing = false
+        for window in NSApp.windows {
+            window.tabbingMode = .disallowed
+        }
+
         if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
            let image = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = image
@@ -30,7 +40,9 @@ struct eLlamaApp: App {
     @StateObject private var settings = AppSettings.shared
 
     var body: some Scene {
-        WindowGroup {
+        // A single, fixed window. Using `Window` (not `WindowGroup`) removes the
+        // "New Window" command / Cmd+N so no extra windows or tabs can be opened.
+        Window("eLlama", id: "main") {
             ContentView()
                 .frame(minWidth: 760, minHeight: 480)
         }
@@ -48,6 +60,9 @@ struct eLlamaApp: App {
                     )
                 }
             }
+
+            // Remove File > New Window (Cmd+N) entirely.
+            CommandGroup(replacing: .newItem) {}
         }
 
         Settings {
