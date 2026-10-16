@@ -275,6 +275,8 @@ public struct SettingsView: View {
     @State private var hideProjectors: Bool = true
     @State private var closeToTray: Bool = false
     @State private var suppressNoModelsAlert: Bool = false
+    @State private var warnMemoryUsage: Bool = true
+    @State private var memoryWarnThreshold: Int = 95
     @State private var isDefaultGgufHandler: Bool = false
 
     @State private var serverHost: String = "127.0.0.1"
@@ -398,6 +400,13 @@ public struct SettingsView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
                 .help("Reset settings on this tab to default values")
+
+                Button("Reset All...") {
+                    resetAllDefaults()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .help("Reset every setting to default values")
 
                 Spacer()
 
@@ -603,6 +612,28 @@ public struct SettingsView: View {
                 Toggle("Hide Vision Projectors (mmproj)", isOn: $hideProjectors)
                 Toggle("Close to Menu Bar / System Tray", isOn: $closeToTray)
                 Toggle("Don't show alert when no models are found", isOn: $suppressNoModelsAlert)
+
+                Toggle("Warn before launching high-memory models", isOn: $warnMemoryUsage)
+                    .help("Show a confirmation when the estimated memory is near or above the system limit")
+
+                if warnMemoryUsage {
+                    LabeledContent("Warning threshold") {
+                        HStack(spacing: 4) {
+                            TextField("", value: $memoryWarnThreshold, format: .number)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 55)
+                                .multilineTextAlignment(.trailing)
+                            Text("% of system memory")
+                                .foregroundColor(.secondary)
+                            Stepper("", onIncrement: {
+                                if memoryWarnThreshold < 100 { memoryWarnThreshold += 1 }
+                            }, onDecrement: {
+                                if memoryWarnThreshold > 50 { memoryWarnThreshold -= 1 }
+                            })
+                            .labelsHidden()
+                        }
+                    }
+                }
 
                 LabeledContent("Default .gguf App") {
                     if isDefaultGgufHandler {
@@ -951,6 +982,8 @@ public struct SettingsView: View {
         hideProjectors = settings.hideProjectors
         closeToTray = settings.closeToTray
         suppressNoModelsAlert = settings.suppressNoModelsAlert
+        warnMemoryUsage = !settings.suppressMemoryWarning
+        memoryWarnThreshold = settings.memoryWarnThresholdPercent
 
         serverHost = settings.serverHost
         serverPort = settings.serverPort
@@ -1003,6 +1036,8 @@ public struct SettingsView: View {
         settings.hideProjectors = hideProjectors
         settings.closeToTray = closeToTray
         settings.suppressNoModelsAlert = suppressNoModelsAlert
+        settings.suppressMemoryWarning = !warnMemoryUsage
+        settings.memoryWarnThresholdPercent = min(100, max(50, memoryWarnThreshold))
 
         settings.serverHost = serverHost
         settings.serverPort = serverPort
@@ -1049,6 +1084,8 @@ public struct SettingsView: View {
             hideProjectors = settings.hideProjectors
             closeToTray = settings.closeToTray
             suppressNoModelsAlert = settings.suppressNoModelsAlert
+            warnMemoryUsage = !settings.suppressMemoryWarning
+            memoryWarnThreshold = settings.memoryWarnThresholdPercent
 
         case .advanced:
             settings.resetAdvancedDefaults()
@@ -1077,6 +1114,20 @@ public struct SettingsView: View {
             checkForELlamaUpdates = settings.checkForELlamaUpdates
             checkForLlamaCppUpdates = settings.checkForLlamaCppUpdates
         }
+    }
+
+    private func resetAllDefaults() {
+        let alert = NSAlert()
+        alert.messageText = "Reset all settings to defaults?"
+        alert.informativeText = "Every setting (paths, server, compute, sampling, updates, and warnings) will be restored to its default value."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Reset All")
+        alert.addButton(withTitle: "Cancel")
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        settings.resetToDefaults()
+        loadFromSettings()
     }
 
     private func browseFolder() {

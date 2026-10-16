@@ -66,6 +66,32 @@ public struct ModelLoadPrefsViewerWindow: View {
         "http://\(serverHost):\(liveServerPortString)"
     }
 
+    private var memoryEstimate: MemoryEstimate {
+        MemoryEstimator.shared.estimate(
+            modelSizeBytes: model.sizeBytes,
+            quant: model.quant,
+            contextSize: contextSize,
+            uBatchSize: uBatchSize,
+            cacheTypeK: cacheTypeK,
+            cacheTypeV: cacheTypeV
+        )
+    }
+
+    private var memoryVerdict: MemoryVerdict {
+        MemoryEstimator.shared.verdict(
+            for: memoryEstimate,
+            thresholdPercent: settings.memoryWarnThresholdPercent
+        )
+    }
+
+    private var memoryColor: Color {
+        switch memoryVerdict {
+        case .ok: return .green
+        case .near: return .orange
+        case .over: return .red
+        }
+    }
+
     public init(model: ModelInfo, isServeMode: Bool = true, onLaunch: (() -> Void)? = nil) {
         self.model = model
         self.isServeMode = isServeMode
@@ -291,6 +317,24 @@ public struct ModelLoadPrefsViewerWindow: View {
                         Text("512 (Default)").tag(512)
                         Text("1024").tag(1024)
                     }
+
+                    LabeledContent("Estimated Memory") {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(memoryColor)
+                                .frame(width: 8, height: 8)
+                                .accessibilityHidden(true)
+                            Text("\(ModelInfo.formatBytes(memoryEstimate.totalBytes)) of \(ModelInfo.formatBytes(memoryEstimate.limitBytes))")
+                                .font(.system(.body, design: .monospaced))
+                            Text("(\(Int(memoryEstimate.fraction * 100))%)")
+                                .foregroundColor(.secondary)
+                        }
+                        .accessibilityLabel("Estimated memory \(ModelInfo.formatBytes(memoryEstimate.totalBytes)) of \(ModelInfo.formatBytes(memoryEstimate.limitBytes))")
+                    }
+
+                    Text("Rough estimate: model weights + KV cache + compute buffer versus total system memory.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
 
                 Section("Sampling Parameters") {

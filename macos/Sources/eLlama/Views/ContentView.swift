@@ -445,6 +445,56 @@ public struct ContentView: View {
         }
     }
 
+    /// Optional pre-launch guardrail. Returns true when it is safe to proceed.
+    /// Shows a suppressible alert when the estimated memory is near or above the
+    /// system limit.
+    private func confirmMemory(for model: ModelInfo) -> Bool {
+        if model.isProjector || settings.suppressMemoryWarning { return true }
+
+        let estimate = MemoryEstimator.shared.estimate(
+            modelSizeBytes: model.sizeBytes,
+            quant: model.quant,
+            contextSize: settings.contextSize,
+            uBatchSize: settings.uBatchSize,
+            cacheTypeK: settings.cacheTypeK,
+            cacheTypeV: settings.cacheTypeV
+        )
+
+        let verdict = MemoryEstimator.shared.verdict(
+            for: estimate,
+            thresholdPercent: settings.memoryWarnThresholdPercent
+        )
+        guard verdict != .ok else { return true }
+
+        let alert = NSAlert()
+        alert.messageText = verdict == .over ? "Not Enough Memory" : "High Memory Usage"
+        alert.informativeText = """
+        Estimated memory for this model is \(ModelInfo.formatBytes(estimate.totalBytes)) of \
+        \(ModelInfo.formatBytes(estimate.limitBytes)) system memory (\(Int(estimate.fraction * 100))%).
+
+        Weights: \(ModelInfo.formatBytes(estimate.weightsBytes))
+        KV cache: \(ModelInfo.formatBytes(estimate.kvCacheBytes))
+        Compute buffer: \(ModelInfo.formatBytes(estimate.computeBufferBytes))
+
+        This is a rough estimate and may be inaccurate. Launching may cause severe \
+        slowdowns, swapping, or the system becoming unresponsive.
+        """
+        alert.alertStyle = verdict == .over ? .critical : .warning
+        alert.addButton(withTitle: "Proceed")
+        alert.addButton(withTitle: "Cancel")
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "Don't show again"
+
+        let response = alert.runModal()
+
+        if alert.suppressionButton?.state == .on {
+            settings.suppressMemoryWarning = true
+            settings.save()
+        }
+
+        return response == .alertFirstButtonReturn
+    }
+
     private func runModel(_ model: ModelInfo) {
         if model.isProjector { return }
         saveLastSelectedModel(model)
@@ -453,6 +503,8 @@ public struct ContentView: View {
             openSettings(for: model, initialTab: .general, isServeMode: false)
             return
         }
+
+        guard confirmMemory(for: model) else { return }
 
         do {
             try TerminalLauncher.shared.launch(model: model, settings: settings)
@@ -480,6 +532,8 @@ public struct ContentView: View {
             openSettings(for: model, initialTab: .general, isServeMode: true)
             return
         }
+
+        guard confirmMemory(for: model) else { return }
 
         do {
             try TerminalLauncher.shared.launchServer(model: model, settings: settings)

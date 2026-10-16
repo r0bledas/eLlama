@@ -35,6 +35,8 @@ public class SettingsForm : Form
     private ComboBox cmbFlashAttn = null!;
     private CheckBox chkMlock = null!;
     private CheckBox chkNoMMap = null!;
+    private CheckBox chkMemoryWarn = null!;
+    private NumericUpDown numMemoryThreshold = null!;
 
     // Sampling & Generation
     private NumericUpDown numTemp = null!;
@@ -585,7 +587,7 @@ public class SettingsForm : Form
         {
             Text = "KV Cache & Memory Optimization",
             Location = new Point(12, 122),
-            Size = new Size(590, 100)
+            Size = new Size(590, 140)
         };
 
         var lblCacheK = new Label { Text = "Cache K (-ctk):", Location = new Point(14, 26), AutoSize = true };
@@ -629,19 +631,50 @@ public class SettingsForm : Form
             AutoSize = true
         };
 
+        chkMemoryWarn = new CheckBox
+        {
+            Text = "Warn before launching models that may exceed system memory",
+            Location = new Point(14, 96),
+            AutoSize = true
+        };
+
+        var lblMemoryThreshold = new Label
+        {
+            Text = "Threshold:",
+            Location = new Point(390, 99),
+            AutoSize = true
+        };
+
+        numMemoryThreshold = new NumericUpDown
+        {
+            Location = new Point(460, 96),
+            Size = new Size(60, 24),
+            Minimum = 50,
+            Maximum = 100,
+            Value = 95
+        };
+
+        var lblMemoryPercent = new Label
+        {
+            Text = "% of RAM",
+            Location = new Point(525, 99),
+            AutoSize = true
+        };
+
         grpMemory.Controls.AddRange(new Control[]
         {
             lblCacheK, cmbCacheK,
             lblCacheV, cmbCacheV,
             lblFlash, cmbFlashAttn,
-            chkMlock, chkNoMMap
+            chkMlock, chkNoMMap,
+            chkMemoryWarn, lblMemoryThreshold, numMemoryThreshold, lblMemoryPercent
         });
 
         // 3. Sampling & Generation
         var grpSampling = new GroupBox
         {
             Text = "Sampling & Generation",
-            Location = new Point(12, 230),
+            Location = new Point(12, 270),
             Size = new Size(590, 195)
         };
 
@@ -790,6 +823,8 @@ public class SettingsForm : Form
         SetCombo(cmbFlashAttn, s.FlashAttention);
         chkMlock.Checked = s.MLock;
         chkNoMMap.Checked = s.NoMMap;
+        chkMemoryWarn.Checked = !s.SuppressMemoryWarning;
+        numMemoryThreshold.Value = Math.Clamp(s.MemoryWarnThresholdPercent, (int)numMemoryThreshold.Minimum, (int)numMemoryThreshold.Maximum);
 
         // Sampling
         numTemp.Value = (decimal)Math.Clamp(s.Temperature, (double)numTemp.Minimum, (double)numTemp.Maximum);
@@ -847,6 +882,8 @@ public class SettingsForm : Form
         SetCombo(cmbFlashAttn, "auto");
         chkMlock.Checked = false;
         chkNoMMap.Checked = false;
+        chkMemoryWarn.Checked = true;
+        numMemoryThreshold.Value = 95;
 
         numTemp.Value = 0.80m;
         numTopP.Value = 0.95m;
@@ -916,6 +953,8 @@ public class SettingsForm : Form
         s.FlashAttention = cmbFlashAttn.SelectedItem?.ToString() ?? "auto";
         s.MLock = chkMlock.Checked;
         s.NoMMap = chkNoMMap.Checked;
+        s.SuppressMemoryWarning = !chkMemoryWarn.Checked;
+        s.MemoryWarnThresholdPercent = (int)numMemoryThreshold.Value;
 
         // Sampling
         s.Temperature = (double)numTemp.Value;

@@ -665,6 +665,8 @@ public class MainForm : Form
 
         string cliArgs = BuildLlamaArgs(model);
 
+        if (!ConfirmMemory(model)) return;
+
         var psi = new ProcessStartInfo
         {
             FileName = "cmd.exe",
@@ -715,6 +717,8 @@ public class MainForm : Form
 
         string serverArgs = BuildLlamaServerArgs(model);
 
+        if (!ConfirmMemory(model)) return;
+
         var psi = new ProcessStartInfo
         {
             FileName = "cmd.exe",
@@ -737,6 +741,49 @@ public class MainForm : Form
         var s = AppSettings.Instance;
         string commonArgs = BuildLlamaArgs(model);
         return $"{commonArgs} --host {s.ServerHost} --port {s.ServerPort}";
+    }
+
+    /// <summary>
+    /// Optional pre-launch memory guardrail. Returns true when it is safe to proceed.
+    /// Shows a suppressible warning when the estimated memory is near or above the
+    /// system limit.
+    /// </summary>
+    private bool ConfirmMemory(ModelInfo model)
+    {
+        var s = AppSettings.Instance;
+        if (s.SuppressMemoryWarning) return true;
+
+        var estimate = MemoryEstimator.Estimate(
+            model.SizeBytes,
+            model.Quant,
+            s.ContextSize,
+            s.UBatchSize,
+            s.CacheTypeK,
+            s.CacheTypeV);
+
+        var verdict = MemoryEstimator.Verdict(estimate, s.MemoryWarnThresholdPercent);
+        if (verdict == MemoryVerdict.Ok) return true;
+
+        string title = verdict == MemoryVerdict.Over ? "Not Enough Memory" : "High Memory Usage";
+        string message =
+            $"Estimated memory for this model is {FormatBytes(estimate.TotalBytes)} of " +
+            $"{FormatBytes(estimate.LimitBytes)} system memory ({(int)(estimate.Fraction * 100)}%).\r\n\r\n" +
+            $"Weights: {FormatBytes(estimate.WeightsBytes)}\r\n" +
+            $"KV cache: {FormatBytes(estimate.KvCacheBytes)}\r\n" +
+            $"Compute buffer: {FormatBytes(estimate.ComputeBufferBytes)}\r\n\r\n" +
+            "This is a rough estimate and may be inaccurate. Launching may cause severe " +
+            "slowdowns, swapping, or the system becoming unresponsive.";
+
+        using var dialog = new MemoryWarningDialog(title, message);
+        var result = dialog.ShowDialog(this);
+
+        if (dialog.Suppress)
+        {
+            s.SuppressMemoryWarning = true;
+            s.Save();
+        }
+
+        return result == DialogResult.OK;
     }
 
     private void CopyServeCommand()
@@ -774,8 +821,7 @@ public class MainForm : Form
     }
 
     private static string BuildLlamaArgs(ModelInfo model)
-    {
-        var s = AppSettings.Instance;
+    {        var s = AppSettings.Instance;
         var args = new List<string>
         {
             $"-m \"{model.FilePath}\"",

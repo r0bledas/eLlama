@@ -10,6 +10,8 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
     @Published public var hideProjectors: Bool
     @Published public var closeToTray: Bool
     @Published public var suppressNoModelsAlert: Bool
+    @Published public var suppressMemoryWarning: Bool
+    @Published public var memoryWarnThresholdPercent: Int
     @Published public var lastSelectedModelPath: String
     @Published public var lastSelectedModelFileName: String
 
@@ -56,6 +58,8 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
         case hideProjectors = "HideProjectors"
         case closeToTray = "CloseToTray"
         case suppressNoModelsAlert = "SuppressNoModelsAlert"
+        case suppressMemoryWarning = "SuppressMemoryWarning"
+        case memoryWarnThresholdPercent = "MemoryWarnThresholdPercent"
         case lastSelectedModelPath = "LastSelectedModelPath"
         case lastSelectedModelFileName = "LastSelectedModelFileName"
         case serverHost = "ServerHost"
@@ -92,6 +96,8 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
         self.hideProjectors = true
         self.closeToTray = false
         self.suppressNoModelsAlert = false
+        self.suppressMemoryWarning = false
+        self.memoryWarnThresholdPercent = 95
         self.lastSelectedModelPath = ""
         self.lastSelectedModelFileName = ""
 
@@ -142,6 +148,8 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
         self.hideProjectors = try container.decodeIfPresent(Bool.self, forKey: .hideProjectors) ?? true
         self.closeToTray = try container.decodeIfPresent(Bool.self, forKey: .closeToTray) ?? false
         self.suppressNoModelsAlert = try container.decodeIfPresent(Bool.self, forKey: .suppressNoModelsAlert) ?? false
+        self.suppressMemoryWarning = try container.decodeIfPresent(Bool.self, forKey: .suppressMemoryWarning) ?? false
+        self.memoryWarnThresholdPercent = try container.decodeIfPresent(Int.self, forKey: .memoryWarnThresholdPercent) ?? 95
         self.lastSelectedModelPath = try container.decodeIfPresent(String.self, forKey: .lastSelectedModelPath) ?? ""
         self.lastSelectedModelFileName = try container.decodeIfPresent(String.self, forKey: .lastSelectedModelFileName) ?? ""
 
@@ -190,6 +198,8 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
         try container.encode(hideProjectors, forKey: .hideProjectors)
         try container.encode(closeToTray, forKey: .closeToTray)
         try container.encode(suppressNoModelsAlert, forKey: .suppressNoModelsAlert)
+        try container.encode(suppressMemoryWarning, forKey: .suppressMemoryWarning)
+        try container.encode(memoryWarnThresholdPercent, forKey: .memoryWarnThresholdPercent)
         try container.encode(lastSelectedModelPath, forKey: .lastSelectedModelPath)
         try container.encode(lastSelectedModelFileName, forKey: .lastSelectedModelFileName)
         try container.encode(serverHost, forKey: .serverHost)
@@ -391,6 +401,8 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
         hideProjectors = true
         closeToTray = false
         suppressNoModelsAlert = false
+        suppressMemoryWarning = false
+        memoryWarnThresholdPercent = 95
 
         let cpuCount = ProcessInfo.processInfo.activeProcessorCount
         threads = max(1, min(cpuCount, 32))
@@ -434,6 +446,8 @@ public final class AppSettings: ObservableObject, Codable, @unchecked Sendable {
         hideProjectors = true
         closeToTray = false
         suppressNoModelsAlert = false
+        suppressMemoryWarning = false
+        memoryWarnThresholdPercent = 95
         save()
     }
 

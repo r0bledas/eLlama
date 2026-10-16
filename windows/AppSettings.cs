@@ -15,6 +15,8 @@ public class AppSettings
     public string LlamaCliPath { get; set; } = GetDefaultLlamaCliPath();
     public bool HideProjectors { get; set; } = true;
     public bool CloseToTray { get; set; } = false;
+    public bool SuppressMemoryWarning { get; set; } = false;
+    public int MemoryWarnThresholdPercent { get; set; } = 95;
 
     [JsonIgnore]
     public string ResolvedModelsDirectory => ResolvePath(ModelsDirectory);
