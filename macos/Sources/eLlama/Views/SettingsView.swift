@@ -275,6 +275,7 @@ public struct SettingsView: View {
     @State private var hideProjectors: Bool = true
     @State private var closeToTray: Bool = false
     @State private var suppressNoModelsAlert: Bool = false
+    @State private var isDefaultGgufHandler: Bool = false
 
     @State private var serverHost: String = "127.0.0.1"
     @State private var serverPort: Int = 8080
@@ -602,6 +603,26 @@ public struct SettingsView: View {
                 Toggle("Hide Vision Projectors (mmproj)", isOn: $hideProjectors)
                 Toggle("Close to Menu Bar / System Tray", isOn: $closeToTray)
                 Toggle("Don't show alert when no models are found", isOn: $suppressNoModelsAlert)
+
+                LabeledContent("Default .gguf App") {
+                    if isDefaultGgufHandler {
+                        Label("eLlama", systemImage: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.caption)
+                    } else {
+                        Button("Set as Default") {
+                            FileAssociation.shared.setAsDefaultHandler { success in
+                                if success {
+                                    isDefaultGgufHandler = FileAssociation.shared.isDefaultHandler
+                                }
+                            }
+                        }
+                        .controlSize(.small)
+                    }
+                }
+                Text("When set, double-clicking a .gguf model opens and runs it with eLlama.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -962,6 +983,7 @@ public struct SettingsView: View {
         checkForELlamaUpdates = settings.checkForELlamaUpdates
         checkForLlamaCppUpdates = settings.checkForLlamaCppUpdates
         installedLlamaVersion = UpdateManager.shared.detectInstalledLlamaCppBuild()
+        isDefaultGgufHandler = FileAssociation.shared.isDefaultHandler
     }
 
     private func saveSettings() {

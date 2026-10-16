@@ -9,6 +9,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func application(_ application: NSApplication, open urls: [URL]) {
+        OpenFileHandler.shared.handle(urls: urls)
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
             for window in sender.windows where window.canBecomeMain {
@@ -28,7 +32,7 @@ struct eLlamaApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .frame(minWidth: 850, minHeight: 480)
+                .frame(minWidth: 760, minHeight: 480)
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)

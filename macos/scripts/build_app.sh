@@ -3,7 +3,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-VERSION="2.0.0"
+VERSION="${VERSION:-2.0.0}"
 APP_NAME="eLlama.app"
 OUTPUT_DIR="$ROOT_DIR/dist"
 
@@ -68,12 +68,30 @@ if command -v hdiutil &> /dev/null; then
     rm -rf "$DMG_DIR"
 fi
 
+# Install into /Applications (skip with NO_INSTALL=1)
+INSTALL_DIR="${INSTALL_DIR:-/Applications}"
+if [ "${NO_INSTALL:-0}" != "1" ]; then
+    echo "--> Installing to $INSTALL_DIR..."
+    pkill -x eLlama > /dev/null 2>&1 || true
+    rm -rf "$INSTALL_DIR/$APP_NAME"
+    ditto "$OUTPUT_DIR/$APP_NAME" "$INSTALL_DIR/$APP_NAME"
+
+    # Re-register with LaunchServices so the .gguf association is picked up
+    LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+    if [ -x "$LSREGISTER" ]; then
+        "$LSREGISTER" -f "$INSTALL_DIR/$APP_NAME" > /dev/null 2>&1 || true
+    fi
+fi
+
 echo "=================================================="
 echo " Build Succeeded!"
 echo " Artifacts in: $OUTPUT_DIR"
 echo " - $APP_NAME"
 echo " - eLlama-v${VERSION}-macos.app.zip"
 if [ -f "$OUTPUT_DIR/eLlama-v${VERSION}-macos.dmg" ]; then
-    echo " - eLlama-v${VERSION}-macos.dmg"
+echo " - eLlama-v${VERSION}-macos.dmg"
+fi
+if [ "${NO_INSTALL:-0}" != "1" ]; then
+echo " Installed: $INSTALL_DIR/$APP_NAME"
 fi
 echo "=================================================="

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 public enum ActiveSheet: Identifiable {
     case settings
@@ -18,7 +19,15 @@ public enum ActiveSheet: Identifiable {
 public struct ContentView: View {
     @ObservedObject var settings = AppSettings.shared
 
+    /// Width reserved for every button in the window toolbar.
+    /// Each toolbar button occupies this fixed width; the macOS toolbar moves
+    /// trailing buttons (Finder / Serve / Run Model) into the "»" overflow menu
+    /// once the window is narrower than the sum of all toolbar item widths.
+    /// Lower this value to keep the buttons visible in smaller windows.
+    static let toolbarButtonWidth: CGFloat = 84
+
     @State private var allModels: [ModelInfo] = []
+    @State private var manuallyOpenedModels: [ModelInfo] = []
     @State private var searchText = ""
     @State private var selectedModelId: String? = nil
     @State private var sortOrder = [KeyPathComparator(\ModelInfo.modelName)]
@@ -189,7 +198,7 @@ public struct ContentView: View {
             .padding(.vertical, 6)
             .background(Color(NSColor.windowBackgroundColor))
         }
-        .frame(minWidth: 850, minHeight: 480)
+        .frame(minWidth: 760, minHeight: 480)
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 HStack(spacing: 8) {
@@ -226,7 +235,7 @@ public struct ContentView: View {
                                 .lineLimit(1)
                         }
                     }
-                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: !isLoading, width: 100))
+                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: !isLoading, width: Self.toolbarButtonWidth))
                     .disabled(isLoading)
                     .help("Reload models from directory")
 
@@ -237,7 +246,7 @@ public struct ContentView: View {
                                 .lineLimit(1)
                         }
                     }
-                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: true, width: 100))
+                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: true, width: Self.toolbarButtonWidth))
                     .help("Open Web UI in default browser")
                 }
             }
@@ -251,7 +260,7 @@ public struct ContentView: View {
                                 .lineLimit(1)
                         }
                     }
-                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: selectedModel != nil, width: 100))
+                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: selectedModel != nil, width: Self.toolbarButtonWidth))
                     .disabled(selectedModel == nil)
                     .help("Open selected model in Finder")
 
@@ -263,7 +272,7 @@ public struct ContentView: View {
                                 .lineLimit(1)
                         }
                     }
-                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: isServeAvailable, width: 100))
+                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: isServeAvailable, width: Self.toolbarButtonWidth))
                     .disabled(!isServeAvailable)
                     .help("Configure and start llama-server")
 
@@ -275,7 +284,7 @@ public struct ContentView: View {
                                 .lineLimit(1)
                         }
                     }
-                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: isRunAvailable, isBlue: true, width: 100))
+                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: isRunAvailable, isBlue: true, width: Self.toolbarButtonWidth))
                     .disabled(!isRunAvailable)
                     .help("Launch interactive chat in Terminal")
                 }
@@ -293,6 +302,9 @@ public struct ContentView: View {
         .onAppear {
             checkBackend()
             reloadModels(promptIfEmpty: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .eLlamaOpenModelFile)) { _ in
+            processPendingOpenFiles()
         }
         .sheet(item: $activeSheet, onDismiss: {
             checkBackend()
@@ -350,6 +362,10 @@ public struct ContentView: View {
                 self.allModels = models
                 self.isLoading = false
 
+                for opened in self.manuallyOpenedModels where !self.allModels.contains(where: { $0.id == opened.id }) {
+                    self.allModels.append(opened)
+                }
+
                 // By default always on launch select either the last selected / launched model
                 if self.selectedModelId == nil && !models.isEmpty {
                     let candidate = models.first(where: { $0.filePath == self.settings.lastSelectedModelPath })
@@ -364,6 +380,8 @@ public struct ContentView: View {
                 if models.isEmpty && promptIfEmpty && !self.settings.suppressNoModelsAlert {
                     self.showNoModelsFolderDialog()
                 }
+
+                self.processPendingOpenFiles()
             }
         }
     }
@@ -392,6 +410,39 @@ public struct ContentView: View {
     private func runSelectedModel() {
         guard let model = selectedModel else { return }
         runModel(model)
+    }
+
+    private func processPendingOpenFiles() {
+        let urls = OpenFileHandler.shared.consumePending()
+        guard !urls.isEmpty else { return }
+
+        var lastModel: ModelInfo?
+        for url in urls {
+            let fileURL = url.standardizedFileURL
+            guard FileManager.default.fileExists(atPath: fileURL.path) else { continue }
+
+            let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .totalFileSizeKey])
+            let fileSize = Int64(values?.totalFileSize ?? values?.fileSize ?? 0)
+
+            guard let model = ModelScanner.parseModel(
+                fileURL: fileURL,
+                rootURL: fileURL.deletingLastPathComponent(),
+                fileSize: fileSize
+            ) else { continue }
+
+            if !manuallyOpenedModels.contains(where: { $0.id == model.id }) {
+                manuallyOpenedModels.append(model)
+            }
+            if !allModels.contains(where: { $0.id == model.id }) {
+                allModels.append(model)
+            }
+            lastModel = model
+        }
+
+        if let model = lastModel {
+            selectedModelId = model.id
+            runModel(model)
+        }
     }
 
     private func runModel(_ model: ModelInfo) {
