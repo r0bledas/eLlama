@@ -35,6 +35,22 @@ public struct ContentView: View {
     @State private var activeSheet: ActiveSheet? = nil
     @State private var backendReady = false
     @State private var statusMessage = "Loading models..."
+    @State private var windowWidth: CGFloat = 900
+
+    /// Collapse toolbar buttons to icon-only when the window is narrow.
+    private var isCompactToolbar: Bool { windowWidth < 620 }
+    private var toolbarItemWidth: CGFloat { isCompactToolbar ? 34 : Self.toolbarButtonWidth }
+
+    @ViewBuilder
+    private func toolbarLabel(_ systemImage: String, _ title: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: systemImage)
+            if !isCompactToolbar {
+                Text(title)
+                    .lineLimit(1)
+            }
+        }
+    }
 
     var filteredModels: [ModelInfo] {
         var list = allModels
@@ -198,7 +214,7 @@ public struct ContentView: View {
             .padding(.vertical, 6)
             .background(Color(NSColor.windowBackgroundColor))
         }
-        .frame(minWidth: 720, minHeight: 480)
+        .frame(minWidth: 360, minHeight: 480)
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 HStack(spacing: 4) {
@@ -209,7 +225,7 @@ public struct ContentView: View {
                         TextField("Search", text: $searchText)
                             .textFieldStyle(.plain)
                             .font(.system(size: 11))
-                            .frame(width: 110)
+                            .frame(width: isCompactToolbar ? 70 : 110)
                         if !searchText.isEmpty {
                             Button(action: { searchText = "" }) {
                                 Image(systemName: "xmark.circle.fill")
@@ -229,24 +245,16 @@ public struct ContentView: View {
                     )
 
                     Button(action: { reloadModels() }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "arrow.clockwise")
-                            Text("Refresh")
-                                .lineLimit(1)
-                        }
+                        toolbarLabel("arrow.clockwise", "Refresh")
                     }
-                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: !isLoading, width: Self.toolbarButtonWidth))
+                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: !isLoading, width: toolbarItemWidth))
                     .disabled(isLoading)
                     .help("Reload models from directory")
 
                     Button(action: { openWebUI() }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "globe")
-                            Text("WebUI")
-                                .lineLimit(1)
-                        }
+                        toolbarLabel("globe", "WebUI")
                     }
-                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: true, width: Self.toolbarButtonWidth))
+                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: true, width: toolbarItemWidth))
                     .help("Open Web UI in default browser")
                 }
             }
@@ -254,43 +262,38 @@ public struct ContentView: View {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 4) {
                     Button(action: { openSelectedInFinder() }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "folder")
-                            Text("Finder")
-                                .lineLimit(1)
-                        }
+                        toolbarLabel("folder", "Finder")
                     }
-                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: selectedModel != nil, width: Self.toolbarButtonWidth))
+                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: selectedModel != nil, width: toolbarItemWidth))
                     .disabled(selectedModel == nil)
                     .help("Open selected model in Finder")
 
                     let isServeAvailable = selectedModel != nil && selectedModel?.isProjector == false
                     Button(action: { serveSelectedModel() }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "network")
-                            Text("Serve")
-                                .lineLimit(1)
-                        }
+                        toolbarLabel("network", "Serve")
                     }
-                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: isServeAvailable, width: Self.toolbarButtonWidth))
+                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: isServeAvailable, width: toolbarItemWidth))
                     .disabled(!isServeAvailable)
                     .help("Configure and start llama-server")
 
                     let isRunAvailable = selectedModel != nil && selectedModel?.isProjector == false
                     Button(action: { runSelectedModel() }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "play.fill")
-                            Text("Run Model")
-                                .lineLimit(1)
-                        }
+                        toolbarLabel("play.fill", "Run Model")
                     }
-                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: isRunAvailable, isBlue: true, width: Self.toolbarButtonWidth))
+                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: isRunAvailable, isBlue: true, width: toolbarItemWidth))
                     .disabled(!isRunAvailable)
                     .help("Launch interactive chat in Terminal")
                 }
             }
         }
         .navigationTitle("")
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { windowWidth = geo.size.width }
+                    .onChange(of: geo.size.width) { windowWidth = $0 }
+            }
+        )
         .background(ClickOutsideDeselector {
             selectedModelId = nil
         })

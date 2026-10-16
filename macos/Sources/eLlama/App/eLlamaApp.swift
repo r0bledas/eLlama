@@ -44,7 +44,7 @@ struct eLlamaApp: App {
         // "New Window" command / Cmd+N so no extra windows or tabs can be opened.
         Window("eLlama", id: "main") {
             ContentView()
-                .frame(minWidth: 720, minHeight: 480)
+                .frame(minWidth: 360, minHeight: 480)
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
