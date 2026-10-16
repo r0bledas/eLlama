@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag to attach artifacts to'
+        required: true
+        default: 'v2.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Windows (portable + installer)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $ref = "${{ inputs.tag_name || github.ref_name }}"
+          "value=$($ref -replace '^v', '')" >> $env:GITHUB_OUTPUT
+
+      - name: Publish portable build
+        shell: pwsh
+        working-directory: windows
+        run: |
+          dotnet publish -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true `
+            -o ./PortableRelease
+          Remove-Item "PortableRelease\*.pdb" -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path "Release" -Force
+          Compress-Archive -Path "PortableRelease\*" `
+            -DestinationPath "Release\eLlama-Portable-v${{ steps.version.outputs.value }}-win-x64.zip" -Force
+
+      - name: Build installer (best effort)
+        continue-on-error: true
+        shell: pwsh
+        working-directory: windows
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            "/DMyAppVersion=${{ steps.version.outputs.value }}" installer.iss
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          if-no-files-found: warn
+          path: |
+            windows/Release/*.zip
+            windows/Release/*.exe
+
+  build-macos:
+    name: macOS (app + dmg)
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          ref="${{ inputs.tag_name || github.ref_name }}"
+          echo "value=${ref#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build eLlama.app, ZIP and DMG
+        working-directory: macos
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          NO_INSTALL: '1'
+        run: |
+          chmod +x scripts/build_app.sh
+          ./scripts/build_app.sh
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          if-no-files-found: warn
+          path: |
+            macos/dist/*.zip
+            macos/dist/*.dmg
+
+  release:
+    name: Publish GitHub Release
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Attach artifacts to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag_name || github.ref_name }}
+          fail_on_unmatched_files: false
+          files: dist/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -102,11 +102,37 @@ Official releases are distributed in two clean options:
 
 ---
 
+## Repository Layout
+
+eLlama is a monorepo. Each platform is a self-contained project with its own build tooling:
+
+```text
+eLlama/
+├── windows/                 # Native Windows app (.NET 10 / WinForms / Vulkan)
+│   ├── eLlama.csproj
+│   ├── installer.iss
+│   └── *.cs
+├── macos/                   # Native macOS app (SwiftUI / Metal)
+│   ├── Package.swift
+│   ├── Sources/eLlama/
+│   └── scripts/build_app.sh
+├── .github/workflows/       # CI + release pipeline (builds both platforms)
+├── PRODUCT.md
+├── THIRD-PARTY-NOTICES.md
+└── README.md
+```
+
+Both platforms share one version number and one release tag (`vX.Y.Z`); pushing a `vX.Y.Z` tag builds and attaches the Windows and macOS artifacts to a single GitHub Release.
+
+---
+
 ## Building from Source
+
+### Windows (.NET / WinForms)
 
 ```bash
 git clone https://github.com/r0bledas/eLlama.git
-cd eLlama
+cd eLlama/windows
 dotnet build -c Release
 ```
 

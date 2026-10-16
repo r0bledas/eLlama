@@ -1,6 +1,8 @@
 ; Inno Setup Script for eLlama
+#ifndef MyAppVersion
+  #define MyAppVersion "2.0.0"
+#endif
 #define MyAppName "eLlama"
-#define MyAppVersion "2.0.0"
 #define MyAppPublisher "Raudel"
 #define MyAppURL "https://github.com/r0bledas/eLlama"
 #define MyAppExeName "eLlama.exe"
@@ -18,7 +20,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=Release
-OutputBaseFilename=eLlama-Setup-v2.0.0
+OutputBaseFilename=eLlama-Setup-v{#MyAppVersion}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -26,7 +28,7 @@ SetupIconFile=icon.ico
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 UninstallDisplayIcon={app}\{#MyAppExeName}
-LicenseFile=LICENSE
+LicenseFile=..\LICENSE
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
