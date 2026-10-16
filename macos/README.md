@@ -40,7 +40,10 @@ chmod +x scripts/build_app.sh
 ./scripts/build_app.sh
 ```
 
-The output bundle `eLlama.app`, portable `.zip`, and `.dmg` disk image will be generated in `macos/dist/`.
+The portable `.zip` and `.dmg` disk image are written to `macos/dist/`, and the app is
+installed to `/Applications/eLlama.app`. The loose build-output bundle is not left in
+`dist/` (so macOS never shows a duplicate icon); pass `KEEP_APP=1` to keep it, or
+`NO_INSTALL=1` to skip the `/Applications` install.
 
 ---
 

@@ -29,6 +29,10 @@ rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/$APP_NAME/Contents/MacOS"
 mkdir -p "$OUTPUT_DIR/$APP_NAME/Contents/Resources"
 
+# Keep Spotlight/Launchpad from indexing this build-output bundle (avoids a
+# duplicate eLlama icon alongside the installed /Applications copy)
+touch "$OUTPUT_DIR/.metadata_never_index"
+
 # Copy binary
 echo "--> Assembling $APP_NAME bundle..."
 cp "$BIN_PATH" "$OUTPUT_DIR/$APP_NAME/Contents/MacOS/eLlama"
@@ -80,13 +84,20 @@ if [ "${NO_INSTALL:-0}" != "1" ]; then
     LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
     if [ -x "$LSREGISTER" ]; then
         "$LSREGISTER" -f "$INSTALL_DIR/$APP_NAME" > /dev/null 2>&1 || true
+        "$LSREGISTER" -u "$OUTPUT_DIR/$APP_NAME" > /dev/null 2>&1 || true
     fi
+fi
+
+# Remove the loose build-output bundle so Spotlight/Launchpad does not show a
+# second eLlama next to the installed copy. Archives and the /Applications
+# install are unaffected. Keep it with KEEP_APP=1.
+if [ "${KEEP_APP:-0}" != "1" ]; then
+    rm -rf "$OUTPUT_DIR/$APP_NAME"
 fi
 
 echo "=================================================="
 echo " Build Succeeded!"
 echo " Artifacts in: $OUTPUT_DIR"
-echo " - $APP_NAME"
 echo " - eLlama-v${VERSION}-macos.app.zip"
 if [ -f "$OUTPUT_DIR/eLlama-v${VERSION}-macos.dmg" ]; then
 echo " - eLlama-v${VERSION}-macos.dmg"
