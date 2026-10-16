@@ -69,6 +69,100 @@ public struct ContentView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
+            // Custom action bar. These controls live in the content (not the
+            // native NSToolbar) because macOS aggressively moves trailing
+            // toolbar items into the "»" overflow menu in narrow windows.
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                        .font(.system(size: 11))
+                    TextField("Search", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12))
+                        .frame(width: 150)
+                    if !searchText.isEmpty {
+                        Button(action: { searchText = "" }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                                .font(.system(size: 10))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .frame(height: 26)
+                .background(Color(NSColor.controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(Color(NSColor.separatorColor), lineWidth: 0.5)
+                )
+
+                Button(action: { reloadModels() }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Refresh")
+                            .lineLimit(1)
+                    }
+                }
+                .buttonStyle(ClassicToolbarButtonStyle(isAvailable: !isLoading, width: Self.toolbarButtonWidth))
+                .disabled(isLoading)
+                .help("Reload models from directory")
+
+                Button(action: { openWebUI() }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "globe")
+                        Text("WebUI")
+                            .lineLimit(1)
+                    }
+                }
+                .buttonStyle(ClassicToolbarButtonStyle(isAvailable: true, width: Self.toolbarButtonWidth))
+                .help("Open Web UI in default browser")
+
+                Spacer(minLength: 12)
+
+                Button(action: { openSelectedInFinder() }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "folder")
+                        Text("Finder")
+                            .lineLimit(1)
+                    }
+                }
+                .buttonStyle(ClassicToolbarButtonStyle(isAvailable: selectedModel != nil, width: Self.toolbarButtonWidth))
+                .disabled(selectedModel == nil)
+                .help("Open selected model in Finder")
+
+                let isServeAvailable = selectedModel != nil && selectedModel?.isProjector == false
+                Button(action: { serveSelectedModel() }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "network")
+                        Text("Serve")
+                            .lineLimit(1)
+                    }
+                }
+                .buttonStyle(ClassicToolbarButtonStyle(isAvailable: isServeAvailable, width: Self.toolbarButtonWidth))
+                .disabled(!isServeAvailable)
+                .help("Configure and start llama-server")
+
+                let isRunAvailable = selectedModel != nil && selectedModel?.isProjector == false
+                Button(action: { runSelectedModel() }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "play.fill")
+                        Text("Run Model")
+                            .lineLimit(1)
+                    }
+                }
+                .buttonStyle(ClassicToolbarButtonStyle(isAvailable: isRunAvailable, isBlue: true, width: Self.toolbarButtonWidth))
+                .disabled(!isRunAvailable)
+                .help("Launch interactive chat in Terminal")
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.windowBackgroundColor))
+
+            Divider()
+
             // Main Model Table
             Table(filteredModels, selection: $selectedModelId, sortOrder: $sortOrder) {
                 TableColumn("Model Name", value: \.modelName) { model in
@@ -198,98 +292,7 @@ public struct ContentView: View {
             .padding(.vertical, 6)
             .background(Color(NSColor.windowBackgroundColor))
         }
-        .frame(minWidth: 820, minHeight: 480)
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                HStack(spacing: 6) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.secondary)
-                            .font(.system(size: 11))
-                        TextField("Search", text: $searchText)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 11))
-                            .frame(width: 130)
-                        if !searchText.isEmpty {
-                            Button(action: { searchText = "" }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(.secondary)
-                                    .font(.system(size: 10))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 7)
-                    .frame(height: 26)
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(Color(NSColor.separatorColor), lineWidth: 0.5)
-                    )
-
-                    Button(action: { reloadModels() }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "arrow.clockwise")
-                            Text("Refresh")
-                                .lineLimit(1)
-                        }
-                    }
-                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: !isLoading, width: Self.toolbarButtonWidth))
-                    .disabled(isLoading)
-                    .help("Reload models from directory")
-
-                    Button(action: { openWebUI() }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "globe")
-                            Text("WebUI")
-                                .lineLimit(1)
-                        }
-                    }
-                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: true, width: Self.toolbarButtonWidth))
-                    .help("Open Web UI in default browser")
-                }
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 6) {
-                    Button(action: { openSelectedInFinder() }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "folder")
-                            Text("Finder")
-                                .lineLimit(1)
-                        }
-                    }
-                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: selectedModel != nil, width: Self.toolbarButtonWidth))
-                    .disabled(selectedModel == nil)
-                    .help("Open selected model in Finder")
-
-                    let isServeAvailable = selectedModel != nil && selectedModel?.isProjector == false
-                    Button(action: { serveSelectedModel() }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "network")
-                            Text("Serve")
-                                .lineLimit(1)
-                        }
-                    }
-                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: isServeAvailable, width: Self.toolbarButtonWidth))
-                    .disabled(!isServeAvailable)
-                    .help("Configure and start llama-server")
-
-                    let isRunAvailable = selectedModel != nil && selectedModel?.isProjector == false
-                    Button(action: { runSelectedModel() }) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "play.fill")
-                            Text("Run Model")
-                                .lineLimit(1)
-                        }
-                    }
-                    .buttonStyle(ClassicToolbarButtonStyle(isAvailable: isRunAvailable, isBlue: true, width: Self.toolbarButtonWidth))
-                    .disabled(!isRunAvailable)
-                    .help("Launch interactive chat in Terminal")
-                }
-            }
-        }
+        .frame(minWidth: 760, minHeight: 480)
         .navigationTitle("")
         .background(ClickOutsideDeselector {
             selectedModelId = nil
