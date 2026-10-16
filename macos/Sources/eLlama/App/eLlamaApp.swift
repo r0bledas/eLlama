@@ -32,7 +32,7 @@ struct eLlamaApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .frame(minWidth: 760, minHeight: 480)
+                .frame(minWidth: 820, minHeight: 480)
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)

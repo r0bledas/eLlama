@@ -24,7 +24,7 @@ public struct ContentView: View {
     /// trailing buttons (Finder / Serve / Run Model) into the "»" overflow menu
     /// once the window is narrower than the sum of all toolbar item widths.
     /// Lower this value to keep the buttons visible in smaller windows.
-    static let toolbarButtonWidth: CGFloat = 84
+    static let toolbarButtonWidth: CGFloat = 78
 
     @State private var allModels: [ModelInfo] = []
     @State private var manuallyOpenedModels: [ModelInfo] = []
@@ -198,10 +198,10 @@ public struct ContentView: View {
             .padding(.vertical, 6)
             .background(Color(NSColor.windowBackgroundColor))
         }
-        .frame(minWidth: 760, minHeight: 480)
+        .frame(minWidth: 820, minHeight: 480)
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     HStack(spacing: 6) {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(.secondary)
@@ -209,7 +209,7 @@ public struct ContentView: View {
                         TextField("Search", text: $searchText)
                             .textFieldStyle(.plain)
                             .font(.system(size: 11))
-                            .frame(width: 170)
+                            .frame(width: 130)
                         if !searchText.isEmpty {
                             Button(action: { searchText = "" }) {
                                 Image(systemName: "xmark.circle.fill")
@@ -252,7 +252,7 @@ public struct ContentView: View {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     Button(action: { openSelectedInFinder() }) {
                         HStack(spacing: 5) {
                             Image(systemName: "folder")
@@ -589,7 +589,7 @@ public struct ClassicToolbarButtonStyle: ButtonStyle {
 
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: isBlue && isAvailable ? .semibold : .medium))
+            .font(.system(size: 11, weight: isBlue && isAvailable ? .semibold : .medium))
             .foregroundColor(foregroundColor)
             .frame(width: width, height: height)
             .background(
